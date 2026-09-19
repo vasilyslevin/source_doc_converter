@@ -24,12 +24,29 @@ def test_package_smoke_test_checks_window_and_companion(monkeypatch) -> None:
         lambda: events.append("companion") or ["docling-tools.exe"],
     )
     monkeypatch.setattr(application_entry, "is_packaged_application", lambda: False)
+
+    class FakePdfWriter:
+        def __init__(self) -> None:
+            self.pages = []
+
+        def add_blank_page(self, *, width: float, height: float) -> None:
+            self.pages.append((width, height))
+
+        def write(self, handle) -> None:
+            handle.write(b"%PDF-1.4\n")
+
+    class FakePdfReader:
+        def __init__(self, path: str) -> None:
+            events.append(f"read:{Path(path).name}")
+            self.pages = [object()]
+
     pypdf_module = ModuleType("pypdf")
-    pypdf_module.PdfReader = type("FakePdfReader", (), {})
+    pypdf_module.PdfReader = FakePdfReader
+    pypdf_module.PdfWriter = FakePdfWriter
     monkeypatch.setitem(sys.modules, "pypdf", pypdf_module)
 
     assert application_entry.run_package_smoke_test() == 0
-    assert events == ["window", "closed", "companion"]
+    assert events == ["window", "closed", "companion", "read:pypdf-round-trip.pdf"]
 
 
 def test_prepare_packaged_path_is_noop(monkeypatch, tmp_path: Path) -> None:
@@ -145,7 +162,20 @@ def test_package_smoke_test_requires_internal_macos_dispatch(monkeypatch, tmp_pa
         lambda: [str(executable.resolve()), "--internal-docling-tools"],
     )
     pypdf_module = ModuleType("pypdf")
-    pypdf_module.PdfReader = type("FakePdfReader", (), {})
+    pypdf_module.PdfReader = type(
+        "FakePdfReader",
+        (),
+        {"__init__": lambda self, _path: setattr(self, "pages", [object()])},
+    )
+    pypdf_module.PdfWriter = type(
+        "FakePdfWriter",
+        (),
+        {
+            "__init__": lambda self: None,
+            "add_blank_page": lambda self, **_kwargs: None,
+            "write": lambda self, handle: handle.write(b"%PDF-1.4\n"),
+        },
+    )
     monkeypatch.setitem(sys.modules, "pypdf", pypdf_module)
 
     assert application_entry.run_package_smoke_test() == 0

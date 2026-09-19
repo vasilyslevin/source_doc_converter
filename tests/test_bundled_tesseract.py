@@ -157,6 +157,16 @@ def test_resolve_ocrmypdf_uses_macos_finder_paths_when_path_missing(monkeypatch,
     assert executable == str(tmp_path / "brew" / "ocrmypdf")
 
 
+def test_windows_documented_ocrmypdf_paths_include_uv_tool_bin(monkeypatch) -> None:
+    monkeypatch.setenv("USERPROFILE", "C:/Users/tester")
+    monkeypatch.setenv("LOCALAPPDATA", "C:/Users/tester/AppData/Local")
+
+    paths = ocr_runtime._windows_ocrmypdf_documented_paths()
+
+    assert any(str(path).endswith("Microsoft/WinGet/Links/ocrmypdf.exe") for path in paths)
+    assert any(str(path).endswith(".local/bin/ocrmypdf.exe") for path in paths)
+
+
 def test_candidate_system_executables_marks_homebrew_source(monkeypatch, tmp_path: Path) -> None:
     finder_paths = (tmp_path / "brew",)
     monkeypatch.setattr(ocr_runtime.platform, "system", lambda: "Darwin")

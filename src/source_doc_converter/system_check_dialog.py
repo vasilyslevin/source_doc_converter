@@ -130,7 +130,8 @@ class SystemCheckDialog(QDialog):
             QLabel(
                 "Installs missing OCR dependencies in the background. "
                 "Uses Homebrew on macOS or winget on Windows after explicit confirmation. "
-                "Windows Full bundles OCRmyPDF and Tesseract, but searchable PDF still requires Ghostscript."
+                "Windows Full bundles OCRmyPDF and Tesseract. "
+                "Ghostscript remains optional/recommended for PDF/A and advanced post-processing."
             )
         )
         dependency_layout.addLayout(dependency_buttons)
@@ -431,11 +432,18 @@ class SystemCheckDialog(QDialog):
         return self._download_thread is not None or self._dependency_thread is not None
 
     def _populate(self, diagnostics: SystemDiagnostics) -> None:
+        build_lines = []
+        if diagnostics.package_flavor:
+            build_lines.append(f"Package {diagnostics.package_flavor}")
+        if diagnostics.source_commit_sha:
+            build_lines.append(f"Commit {diagnostics.source_commit_sha}")
+        build_info = f"<br>{'; '.join(build_lines)}" if build_lines else ""
         self.system_label.setText(
             f"Source Document Converter {diagnostics.application_version}<br>"
             f"{diagnostics.operating_system} {diagnostics.operating_system_version} "
             f"({diagnostics.architecture})<br>"
             f"Python {diagnostics.python_version}; PySide6 {diagnostics.pyside_version}"
+            f"{build_info}"
         )
 
         self.component_table.setRowCount(len(diagnostics.components))

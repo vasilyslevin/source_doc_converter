@@ -65,7 +65,7 @@ def test_docling_output_is_available_when_package_and_models_are_ready(monkeypat
     assert availability.docling_reason is None
 
 
-def test_searchable_pdf_requires_ghostscript(monkeypatch) -> None:
+def test_searchable_pdf_does_not_require_ghostscript(monkeypatch) -> None:
     monkeypatch.setattr(
         system_diagnostics,
         "_python_package_available",
@@ -86,4 +86,4 @@ def test_searchable_pdf_requires_ghostscript(monkeypatch) -> None:
 
     availability = system_diagnostics.check_output_availability()
 
-    assert not availability.searchable_pdf
+    assert availability.searchable_pdf

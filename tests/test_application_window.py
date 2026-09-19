@@ -129,7 +129,7 @@ def test_missing_models_disable_only_docling_outputs(qtbot) -> None:
     assert "models are not ready" in window.markdown_checkbox.toolTip()
 
 
-def test_missing_ghostscript_disables_searchable_pdf(qtbot) -> None:
+def test_missing_ghostscript_keeps_searchable_pdf_enabled(qtbot) -> None:
     window = ApplicationWindow(
         availability_provider=lambda: OutputAvailability(True, True),
         model_state_provider=ready_models,
@@ -152,8 +152,7 @@ def test_missing_ghostscript_disables_searchable_pdf(qtbot) -> None:
 
     window.apply_diagnostics(diagnostics)
 
-    assert not window.searchable_pdf_checkbox.isEnabled()
-    assert "Ghostscript" in window.searchable_pdf_checkbox.toolTip()
+    assert window.searchable_pdf_checkbox.isEnabled()
 
 
 def test_missing_pypdf_disables_fast_markdown_option(monkeypatch, qtbot) -> None:

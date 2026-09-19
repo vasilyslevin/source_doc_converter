@@ -459,9 +459,11 @@ def _fast_markdown_export(source: Path) -> str:
     try:
         from pypdf import PdfReader
     except ImportError as error:
+        detail = _sanitize_exception_summary(error)
         raise ConversionError(
             "Fast Markdown mode requires pypdf support in this runtime. "
-            "Install pypdf and retry, or choose Accurate Markdown."
+            "Install pypdf and retry, or choose Accurate Markdown. "
+            f"Import diagnostics: {detail}"
         ) from error
 
     reader = PdfReader(str(source))
@@ -473,6 +475,13 @@ def _fast_markdown_export(source: Path) -> str:
         if index < len(reader.pages) - 1:
             chunks.append("<!-- PDF_PAGE_BREAK -->")
     return "\n\n".join(chunks)
+
+
+def _sanitize_exception_summary(error: Exception) -> str:
+    text = str(error).replace(str(Path.home()), "<home>").strip()
+    if not text:
+        return error.__class__.__name__
+    return f"{error.__class__.__name__}: {text}"
 
 
 def _auto_analysis_mode(

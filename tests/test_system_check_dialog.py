@@ -25,6 +25,8 @@ def sample_diagnostics() -> SystemDiagnostics:
             ),
             ComponentStatus("docling", "Docling", False, error="Package not installed"),
         ),
+        package_flavor="Lite",
+        source_commit_sha="abc1234",
     )
 
 
@@ -37,6 +39,8 @@ def test_dialog_displays_component_status(qtbot) -> None:
     assert dialog.component_table.item(0, 1).text() == "Available"
     assert dialog.component_table.item(2, 1).text() == "Unavailable"
     assert "Docling" in dialog.guidance_label.text()
+    assert "Package Lite" in dialog.system_label.text()
+    assert "Commit abc1234" in dialog.system_label.text()
 
 
 def test_refresh_emits_updated_diagnostics(qtbot) -> None:
@@ -95,4 +99,4 @@ def test_dialog_guided_setup_text_mentions_windows_full_ghostscript_requirement(
     labels = [label.text() for label in dialog.findChildren(type(dialog.guidance_label))]
 
     assert any("Windows Full bundles OCRmyPDF and Tesseract" in text for text in labels)
-    assert any("requires Ghostscript" in text for text in labels)
+    assert any("Ghostscript remains optional/recommended" in text for text in labels)

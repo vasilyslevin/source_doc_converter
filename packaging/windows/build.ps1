@@ -31,6 +31,7 @@ $TesseractBundler = Join-Path $PSScriptRoot "bundle-tesseract.ps1"
 $TorchvisionRuntimeHook = Join-Path $PSScriptRoot "pyi_rth_torchvision.py"
 $PackagingNotes = Join-Path $PSScriptRoot "PACKAGING_NOTES.txt"
 $LitePackagingNotes = Join-Path $PSScriptRoot "PACKAGING_NOTES_LITE.txt"
+$BuildManifestName = "build_manifest.json"
 $StagingDirectory = Join-Path $OutputDirectory "dist"
 $WorkDirectory = Join-Path $OutputDirectory "work"
 $SpecDirectory = Join-Path $OutputDirectory "spec"
@@ -185,6 +186,7 @@ $DoclingArguments = @(
     "--collect-all=docling_core",
     "--collect-all=docling_parse",
     "--collect-all=pypdf",
+    "--copy-metadata=pypdf",
     "--collect-all=rapidocr",
     "--collect-all=transformers",
     "--collect-submodules=$ScipyArrayApiNamespace.numpy",
@@ -195,7 +197,9 @@ $DoclingArguments = @(
     "--add-data=$TorchvisionRoot\\_meta_registrations.py;torchvision",
     "--runtime-hook=$TorchvisionRuntimeHook",
     "--hidden-import=docling.cli.tools",
-    "--hidden-import=docling.document_converter"
+    "--hidden-import=docling.document_converter",
+    "--hidden-import=pypdf._reader",
+    "--hidden-import=pypdf._writer"
 )
 $GuiArguments = $DoclingArguments + @(
     "--icon=$IconPath",
@@ -313,12 +317,31 @@ try {
         Copy-Item $PackagingNotes (Join-Path $Distribution "PACKAGING_NOTES.txt") -Force
     }
 
+    $AppVersion = (& $Python -c "from source_doc_converter import __version__; print(__version__)").Trim()
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($AppVersion)) {
+        throw "Could not determine application version for build manifest."
+    }
+    $CommitSha = $env:GITHUB_SHA
+    if ([string]::IsNullOrWhiteSpace($CommitSha)) {
+        $CommitSha = (& git rev-parse --verify HEAD 2>$null).Trim()
+        if ($LASTEXITCODE -ne 0) {
+            $CommitSha = $null
+        }
+    }
+    $Manifest = [ordered]@{
+        application_version = $AppVersion
+        package_flavor      = $PackageFlavor
+        source_commit_sha   = if ([string]::IsNullOrWhiteSpace($CommitSha)) { $null } else { $CommitSha }
+    } | ConvertTo-Json -Depth 3
+    Set-Content -LiteralPath (Join-Path $Distribution $BuildManifestName) -Encoding utf8 -Value $Manifest
+
     $HashTargets = @(
         "SourceDocumentConverter.exe",
         "docling-tools.exe",
         "LICENSE",
         "THIRD_PARTY_NOTICES.md",
-        "PACKAGING_NOTES.txt"
+        "PACKAGING_NOTES.txt",
+        $BuildManifestName
     )
     if ($PackageFlavor -eq "Full") {
         $HashTargets += @(

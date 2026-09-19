@@ -101,6 +101,12 @@ def _windows_ocrmypdf_documented_paths() -> tuple[Path, ...]:
     if local_app_data:
         roots.append(Path(local_app_data) / "Microsoft" / "WinGet" / "Links" / "ocrmypdf.exe")
         roots.append(Path(local_app_data) / "Programs" / "OCRmyPDF" / "ocrmypdf.exe")
+        roots.append(
+            Path(local_app_data) / "Programs" / "Python" / "Scripts" / "ocrmypdf.exe"
+        )
+    user_profile = os.environ.get("USERPROFILE", "").strip()
+    if user_profile:
+        roots.append(Path(user_profile) / ".local" / "bin" / "ocrmypdf.exe")
     roots.append(Path("C:/Program Files/OCRmyPDF/ocrmypdf.exe"))
     return tuple(roots)
 

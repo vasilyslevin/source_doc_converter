@@ -124,6 +124,16 @@ def test_windows_build_supports_lite_package() -> None:
     assert "Install Missing OCR Tools" in notes
 
 
+def test_windows_build_writes_manifest_with_version_flavor_and_commit() -> None:
+    build_script = (ROOT / "packaging" / "windows" / "build.ps1").read_text(encoding="utf-8")
+
+    assert '$BuildManifestName = "build_manifest.json"' in build_script
+    assert "application_version = $AppVersion" in build_script
+    assert "package_flavor      = $PackageFlavor" in build_script
+    assert "source_commit_sha" in build_script
+    assert "$env:GITHUB_SHA" in build_script
+
+
 def test_windows_workflow_smokes_lite_distribution_independently() -> None:
     workflow = WINDOWS_WORKFLOW.read_text(encoding="utf-8")
 
