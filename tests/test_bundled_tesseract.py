@@ -162,9 +162,10 @@ def test_windows_documented_ocrmypdf_paths_include_uv_tool_bin(monkeypatch) -> N
     monkeypatch.setenv("LOCALAPPDATA", "C:/Users/tester/AppData/Local")
 
     paths = ocr_runtime._windows_ocrmypdf_documented_paths()
+    normalized = [path.as_posix() for path in paths]
 
-    assert any(str(path).endswith("Microsoft/WinGet/Links/ocrmypdf.exe") for path in paths)
-    assert any(str(path).endswith(".local/bin/ocrmypdf.exe") for path in paths)
+    assert any(path.endswith("Microsoft/WinGet/Links/ocrmypdf.exe") for path in normalized)
+    assert any(path.endswith(".local/bin/ocrmypdf.exe") for path in normalized)
 
 
 def test_candidate_system_executables_marks_homebrew_source(monkeypatch, tmp_path: Path) -> None:
