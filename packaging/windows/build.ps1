@@ -2,6 +2,7 @@ param(
     [string]$Python = "python",
     [string]$OutputDirectory = "",
     [string]$TesseractRoot = "",
+    [string]$InstallerCacheDirectory = "",
     [ValidateSet("Full", "Lite")]
     [string]$PackageFlavor = "Full"
 )
@@ -12,6 +13,11 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $OutputDirectory = Join-Path $RepositoryRoot "build\windows"
 } else {
     $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
+}
+if ([string]::IsNullOrWhiteSpace($InstallerCacheDirectory)) {
+    $InstallerCacheDirectory = Join-Path $RepositoryRoot "build\tesseract-cache"
+} else {
+    $InstallerCacheDirectory = [System.IO.Path]::GetFullPath($InstallerCacheDirectory)
 }
 
 $SourceRoot = Join-Path $RepositoryRoot "src"
@@ -278,10 +284,18 @@ try {
 
     if ($PackageFlavor -eq "Full") {
         $TesseractDestination = Join-Path $Distribution "tools\tesseract"
+        $TesseractWorkDirectory = Join-Path $WorkDirectory "tesseract"
         if ([string]::IsNullOrWhiteSpace($TesseractRoot)) {
-            & $TesseractBundler -DestinationDirectory $TesseractDestination -WorkDirectory (Join-Path $OutputDirectory "tesseract")
+            & $TesseractBundler `
+                -DestinationDirectory $TesseractDestination `
+                -WorkDirectory $TesseractWorkDirectory `
+                -InstallerCacheDirectory $InstallerCacheDirectory
         } else {
-            & $TesseractBundler -SourceDirectory $TesseractRoot -DestinationDirectory $TesseractDestination -WorkDirectory (Join-Path $OutputDirectory "tesseract")
+            & $TesseractBundler `
+                -SourceDirectory $TesseractRoot `
+                -DestinationDirectory $TesseractDestination `
+                -WorkDirectory $TesseractWorkDirectory `
+                -InstallerCacheDirectory $InstallerCacheDirectory
         }
         if ($LASTEXITCODE -ne 0) {
             throw "Tesseract bundling failed with exit code $LASTEXITCODE."

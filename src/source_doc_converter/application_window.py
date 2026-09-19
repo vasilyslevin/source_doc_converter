@@ -358,7 +358,8 @@ class ApplicationWindow(MainWindow):
         if not availability.searchable_pdf:
             self.searchable_pdf_checkbox.setChecked(False)
             self.searchable_pdf_checkbox.setToolTip(
-                "Searchable PDF requires OCRmyPDF, Tesseract OCR, and Ghostscript."
+                "Searchable PDF requires OCRmyPDF, Tesseract OCR, and Ghostscript. "
+                "Windows Full still requires Ghostscript."
             )
         else:
             self.searchable_pdf_checkbox.setToolTip("")

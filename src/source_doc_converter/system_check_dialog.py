@@ -129,7 +129,8 @@ class SystemCheckDialog(QDialog):
         dependency_layout.addWidget(
             QLabel(
                 "Installs missing OCR dependencies in the background. "
-                "Uses Homebrew on macOS or winget on Windows after explicit confirmation."
+                "Uses Homebrew on macOS or winget on Windows after explicit confirmation. "
+                "Windows Full bundles OCRmyPDF and Tesseract, but searchable PDF still requires Ghostscript."
             )
         )
         dependency_layout.addLayout(dependency_buttons)

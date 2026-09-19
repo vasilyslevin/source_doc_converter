@@ -118,11 +118,48 @@ def test_dependency_setup_failure_preserves_full_details(monkeypatch, qtbot) -> 
 
 def test_default_steps_on_macos_require_homebrew(monkeypatch) -> None:
     monkeypatch.setattr(dependency_setup, "system", lambda: "Darwin")
-    monkeypatch.setattr(dependency_setup.shutil, "which", lambda _: None)
+    monkeypatch.setattr(dependency_setup, "find_executable", lambda *_args, **_kwargs: None)
 
     steps = dependency_setup._default_steps(diagnostics(("ocrmypdf", "tesseract", "ghostscript")))
 
     assert steps == []
+
+
+def test_default_steps_on_macos_use_finder_safe_homebrew_path(monkeypatch) -> None:
+    monkeypatch.setattr(dependency_setup, "system", lambda: "Darwin")
+    monkeypatch.setattr(
+        dependency_setup,
+        "macos_finder_search_paths",
+        lambda: ("/opt/homebrew/bin", "/usr/local/bin"),
+    )
+
+    def fake_find_executable(name: str, **kwargs) -> str | None:
+        assert name == "brew"
+        assert kwargs["extra_directories"] == ("/opt/homebrew/bin", "/usr/local/bin")
+        return "/opt/homebrew/bin/brew"
+
+    monkeypatch.setattr(dependency_setup, "find_executable", fake_find_executable)
+
+    steps = dependency_setup._default_steps(diagnostics(("ocrmypdf",)))
+
+    assert len(steps) == 1
+    assert steps[0].command == ("/opt/homebrew/bin/brew", "install", "ocrmypdf")
+
+
+def test_default_steps_on_windows_with_only_missing_ghostscript(monkeypatch) -> None:
+    monkeypatch.setattr(dependency_setup, "system", lambda: "Windows")
+    monkeypatch.setattr(dependency_setup.shutil, "which", lambda _: "winget")
+
+    steps = dependency_setup._default_steps(diagnostics(("ghostscript",)))
+
+    assert [step.key for step in steps] == ["ghostscript"]
+    assert steps[0].command == (
+        "winget",
+        "install",
+        "-e",
+        "--id",
+        "ArtifexSoftware.GhostScript",
+    )
 
 
 def test_dependency_setup_reports_manual_setup_when_no_guided_installer(monkeypatch, qtbot) -> None:

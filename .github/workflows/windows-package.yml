@@ -34,12 +34,12 @@ jobs:
 
       - name: Create Tesseract cache directory
         shell: pwsh
-        run: New-Item -ItemType Directory -Path "build/windows/tesseract/download" -Force | Out-Null
+        run: New-Item -ItemType Directory -Path "build/tesseract-cache" -Force | Out-Null
 
       - name: Cache pinned Tesseract installer
         uses: actions/cache@v4
         with:
-          path: build/windows/tesseract/download/${{ env.TESSERACT_INSTALLER_NAME }}
+          path: build/tesseract-cache/${{ env.TESSERACT_INSTALLER_NAME }}
           key: windows-tesseract-installer-${{ runner.os }}-${{ env.TESSERACT_LOCK_VERSION }}-${{ env.TESSERACT_LOCK_SHA256 }}
 
       - name: Install application and build dependencies
@@ -57,7 +57,7 @@ jobs:
 
       - name: Build standalone folder (Full)
         shell: pwsh
-        run: ./packaging/windows/build.ps1
+        run: ./packaging/windows/build.ps1 -InstallerCacheDirectory build/tesseract-cache
 
       - name: Locate Full distribution
         shell: pwsh
@@ -197,6 +197,51 @@ jobs:
           }
           if (Test-Path (Join-Path $env:DIST_DIR_LITE "tools\\tesseract\\tesseract.exe") -PathType Leaf) {
             throw "Lite package unexpectedly contains bundled Tesseract."
+          }
+          $LiteFiles = Get-ChildItem -Path $env:DIST_DIR_LITE -File -Recurse
+          $ForbiddenPatterns = @(
+            "(?i)(^|[\\/])pikepdf([\\/]|$)",
+            "(?i)(^|[\\/])pikepdf[^\\/]*\\.(pyd|dll)$",
+            "(?i)(^|[\\/])qpdf([\\/]|$)",
+            "(?i)(^|[\\/])qpdf\\.exe$",
+            "(?i)(^|[\\/])libqpdf[^\\/]*\\.dll$",
+            "(?i)(^|[\\/])gswin(32|64)c?\\.exe$",
+            "(?i)(^|[\\/])gsdll(32|64)\\.dll$",
+            "(?i)(^|[\\/])libgs[^\\/]*\\.dll$"
+          )
+          foreach ($File in $LiteFiles) {
+            $RelativePath = $File.FullName.Substring($env:DIST_DIR_LITE.Length + 1) -replace "\\", "/"
+            foreach ($Pattern in $ForbiddenPatterns) {
+              if ($RelativePath -match $Pattern) {
+                throw "Lite package unexpectedly contains forbidden payload: $RelativePath"
+              }
+            }
+          }
+
+      - name: Smoke test Lite packaged executables
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+          DO_NOT_TRACK: "1"
+        run: |
+          $GuiPathLite = Join-Path $env:DIST_DIR_LITE "SourceDocumentConverter.exe"
+          $GuiProcessLite = Start-Process -FilePath $GuiPathLite -ArgumentList "--package-smoke-test" -Wait -PassThru
+          if ($GuiProcessLite.ExitCode -ne 0) {
+            throw "Lite GUI package smoke test failed with exit code $($GuiProcessLite.ExitCode)."
+          }
+          & (Join-Path $env:DIST_DIR_LITE "docling-tools.exe") --help
+          if ($LASTEXITCODE -ne 0) {
+            throw "Lite docling-tools help failed with exit code $LASTEXITCODE."
+          }
+          & (Join-Path $env:DIST_DIR_LITE "docling-tools.exe") --runtime-check
+          if ($LASTEXITCODE -ne 0) {
+            throw "Lite docling runtime check failed with exit code $LASTEXITCODE."
+          }
+          & (Join-Path $env:DIST_DIR_LITE "docling-tools.exe") models download --help
+          if ($LASTEXITCODE -ne 0) {
+            throw "Lite docling model-download help failed with exit code $LASTEXITCODE."
           }
 
       - name: Create ZIP artifacts

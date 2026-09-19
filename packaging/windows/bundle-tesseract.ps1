@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$DestinationDirectory,
     [string]$SourceDirectory = "",
-    [string]$WorkDirectory = ""
+    [string]$WorkDirectory = "",
+    [string]$InstallerCacheDirectory = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -162,7 +163,12 @@ $BundleRoot = if ([string]::IsNullOrWhiteSpace($WorkDirectory)) {
 } else {
     [System.IO.Path]::GetFullPath($WorkDirectory)
 }
-$DownloadDirectory = Join-Path $BundleRoot "download"
+$InstallerCacheRoot = if ([string]::IsNullOrWhiteSpace($InstallerCacheDirectory)) {
+    Join-Path $BundleRoot "download"
+} else {
+    [System.IO.Path]::GetFullPath($InstallerCacheDirectory)
+}
+$DownloadDirectory = $InstallerCacheRoot
 $ExtractDirectory = Join-Path $BundleRoot "extract"
 $ArchivePath = Join-Path $DownloadDirectory "tesseract-ocr-w64-setup-$ExpectedVersion.exe"
 
@@ -312,7 +318,7 @@ Write-Stage "Bundled language verification succeeded."
     "Download URL: $DownloadUrl",
     "SHA-256: $ExpectedSha256",
     "Languages: $($BundledLanguages -join ', ')",
-    "Source directory: $SourceDirectory",
+    "Provenance: Pinned UB-Mannheim installer archive (checksum-verified extraction)",
     "Runtime language data: tessdata",
     "Required configs: tessdata/configs/hocr"
 ) | Set-Content (Join-Path $DestinationDirectory "BUNDLE_INFO.txt") -Encoding utf8

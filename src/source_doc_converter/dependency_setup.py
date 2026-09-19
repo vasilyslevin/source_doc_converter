@@ -7,6 +7,7 @@ from threading import Event
 
 from PySide6.QtCore import QObject, Signal, Slot
 
+from source_doc_converter.runtime_paths import find_executable, macos_finder_search_paths
 from source_doc_converter.subprocess_utils import background_subprocess_kwargs
 from source_doc_converter.system_diagnostics import (
     ComponentStatus,
@@ -193,14 +194,15 @@ def _default_steps(diagnostics: SystemDiagnostics) -> list[DependencyInstallStep
             )
         return steps
     if active_system == "Darwin":
-        if shutil.which("brew") is None:
+        brew_executable = find_executable("brew", extra_directories=macos_finder_search_paths())
+        if brew_executable is None:
             return []
         if "ocrmypdf" in missing:
             steps.append(
                 DependencyInstallStep(
                     "ocrmypdf",
                     "OCRmyPDF",
-                    ("brew", "install", "ocrmypdf"),
+                    (brew_executable, "install", "ocrmypdf"),
                 )
             )
         if "tesseract" in missing:
@@ -208,7 +210,7 @@ def _default_steps(diagnostics: SystemDiagnostics) -> list[DependencyInstallStep
                 DependencyInstallStep(
                     "tesseract",
                     "Tesseract OCR",
-                    ("brew", "install", "tesseract"),
+                    (brew_executable, "install", "tesseract"),
                 )
             )
         if "ghostscript" in missing:
@@ -216,7 +218,7 @@ def _default_steps(diagnostics: SystemDiagnostics) -> list[DependencyInstallStep
                 DependencyInstallStep(
                     "ghostscript",
                     "Ghostscript",
-                    ("brew", "install", "ghostscript"),
+                    (brew_executable, "install", "ghostscript"),
                 )
             )
         return steps
