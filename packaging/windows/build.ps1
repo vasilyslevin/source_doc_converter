@@ -264,9 +264,30 @@ try {
         Remove-Item $OcrDistribution -Recurse -Force
     }
 
-    $PackagedTorchvisionExtensions = Get-ChildItem -Path $Distribution -Filter "_C*.pyd" -File -Recurse |
-        Where-Object { $_.FullName -like "*\\torchvision\\*" }
+    $DistributionRoot = [System.IO.Path]::GetFullPath($Distribution).TrimEnd("\", "/")
+    $DistributionPrefix = "$DistributionRoot\"
+    $PackagedTorchvisionCandidates = @(Get-ChildItem -Path $DistributionRoot -Filter "_C*.pyd" -File -Recurse)
+    $PackagedTorchvisionExtensions = @(
+        $PackagedTorchvisionCandidates | Where-Object {
+            $_.Directory.Name -eq "torchvision" -and
+            [System.IO.Path]::GetFullPath($_.FullName).StartsWith(
+                $DistributionPrefix,
+                [System.StringComparison]::OrdinalIgnoreCase
+            )
+        }
+    )
     if ($PackagedTorchvisionExtensions.Count -eq 0) {
+        Write-Host "Discovered _C*.pyd candidates under distribution:"
+        if ($PackagedTorchvisionCandidates.Count -eq 0) {
+            Write-Host " - (none)"
+        } else {
+            foreach ($Candidate in $PackagedTorchvisionCandidates) {
+                Write-Host " - $($Candidate.FullName)"
+            }
+        }
+        Write-Host "Expected packaged torchvision extension locations:"
+        Write-Host " - $(Join-Path $DistributionRoot 'torchvision\\_C*.pyd')"
+        Write-Host " - $(Join-Path $DistributionRoot '_internal\\torchvision\\_C*.pyd')"
         throw "Packaged torchvision native extension _C.pyd was not found."
     }
 
