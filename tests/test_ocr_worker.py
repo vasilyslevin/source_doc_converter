@@ -146,6 +146,42 @@ def test_worker_continues_after_failure(monkeypatch, tmp_path: Path) -> None:
     assert summaries == [(False, 1, 1)]
 
 
+def test_worker_continues_after_fast_markdown_failure(monkeypatch, tmp_path: Path) -> None:
+    first = tmp_path / "first.pdf"
+    second = tmp_path / "second.pdf"
+    first.write_bytes(b"%PDF-1.4\n")
+    second.write_bytes(b"%PDF-1.4\n")
+    output_directory = tmp_path / "output"
+
+    def fake_run_docling(input_path, output_directory, **kwargs):
+        if input_path == first:
+            raise OcrError("Fast Markdown mode requires pypdf support in this runtime.")
+        return DoclingResult(input_path, output_directory / "second.md", None)
+
+    monkeypatch.setattr(ocr_worker, "run_docling", fake_run_docling)
+    worker = ProcessingWorker(
+        (first, second),
+        output_directory,
+        create_searchable_pdf=False,
+        create_markdown=True,
+        create_json=False,
+        analysis_mode="fast",
+    )
+    failures = []
+    successes = []
+    summaries = []
+    worker.file_failed.connect(lambda source_path, error: failures.append((source_path, error)))
+    worker.file_succeeded.connect(lambda source_path, output: successes.append((source_path, output)))
+    worker.finished.connect(lambda cancelled, ok, failed: summaries.append((cancelled, ok, failed)))
+
+    worker.run()
+
+    assert failures == [(str(first), "Fast Markdown mode requires pypdf support in this runtime.")]
+    assert len(successes) == 1
+    assert successes[0][0] == str(second)
+    assert summaries == [(False, 1, 1)]
+
+
 def test_worker_can_be_cancelled_before_start(tmp_path: Path) -> None:
     source = tmp_path / "filing.pdf"
     source.write_bytes(b"%PDF-1.4\n")

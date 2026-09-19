@@ -7,7 +7,7 @@ Executables:
 - docling-tools.exe is the companion used only for explicit model setup.
 
 OCRmyPDF and Tesseract are intentionally not bundled in the Lite package.
-Use Help > System Check > Install Missing Dependencies to run guided setup.
+Use Help > System Check > Install Missing OCR Tools to run guided setup.
 
 Models are not included. Choose a model folder and approve the download through
 Help > System Check. Document conversion does not automatically download models.

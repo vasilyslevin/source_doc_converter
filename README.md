@@ -65,12 +65,14 @@ OCRmyPDF also requires an OCR engine and supporting system components. For sourc
 
 ### macOS
 
-Homebrew provides OCRmyPDF and Tesseract:
+Homebrew provides OCRmyPDF, Tesseract, and Ghostscript:
 
 ```bash
-brew install ocrmypdf tesseract
+brew install ocrmypdf tesseract ghostscript
 python -m pip install -e ".[docling]"
 ```
+
+For native macOS Apple Silicon package installation, checksum verification, Finder launch behavior, and signing/notarization notes, see [docs/macos.md](docs/macos.md).
 
 ### Windows
 
@@ -159,7 +161,7 @@ These controls reduce unintended network access but are not a substitute for ope
 7. Select **Process Documents**.
 8. Use **Open Output Folder** after processing completes.
 
-Unavailable output formats are disabled automatically. Searchable PDF depends only on OCRmyPDF and Tesseract (bundled in the packaged Windows build, system-provided for source installs). Markdown and JSON require both Docling and completed local model setup.
+Unavailable output formats are disabled automatically. Searchable PDF depends on OCRmyPDF, Tesseract, and Ghostscript (Windows Full bundles OCRmyPDF + Tesseract but still requires external Ghostscript; Windows Lite/macOS/source installs use external OCR tools). Markdown and JSON require both Docling and completed local model setup.
 
 ## Output files
 
@@ -249,9 +251,9 @@ GitHub Actions for `source_doc_converter` runs both commands on Ubuntu, Windows,
 
 ## Packaging direction
 
-The Windows packaging workflow now bundles a pinned UB-Mannheim Tesseract runtime (including `eng` and `osd` language data) and verifies it during build and smoke test. See `packaging/windows/TESSERACT_BUNDLING.md` for source pinning, checksum refresh, and local verification steps.
+The Windows packaging workflow builds separate Full and Lite artifacts: Full bundles the app runtime, Docling tools, OCRmyPDF companion, and pinned Tesseract runtime (Ghostscript remains external and is installed via guided setup when missing), while Lite keeps OCR tools external with guided setup.
 
-The workflow also builds a **Lite** Windows package that excludes OCRmyPDF and bundled Tesseract. The Lite package relies on guided dependency setup from **Help > System Check**.
+Before publishing a release, manually run the **Windows development package** workflow for the release tag and confirm the package succeeds.
 
 ## Privacy and security
 

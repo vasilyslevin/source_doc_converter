@@ -7,12 +7,15 @@ from pathlib import Path
 
 from PySide6.QtCore import QSettings, QStandardPaths
 
+from source_doc_converter.runtime_paths import packaged_resources_directory
+
 MODEL_DIRECTORY_ENV = "SOURCE_DOC_CONVERTER_MODEL_DIR"
 LEGACY_MODEL_DIRECTORY_ENV = "FILING_DOC_CONVERTER_MODEL_DIR"
 MODEL_DIRECTORY_SETTING = "models/directory"
 MODEL_READY_MARKER = ".source-doc-converter-models-ready"
 LEGACY_MODEL_READY_MARKER = ".filing-doc-converter-models-ready"
-PACKAGED_DOWNLOADER_NAME = "docling-tools.exe"
+PACKAGED_DOWNLOADER_NAMES = ("docling-tools.exe", "docling-tools")
+INTERNAL_DOCLING_TOOLS_FLAG = "--internal-docling-tools"
 EXPECTED_MODEL_DIRECTORIES = (
     "docling-project--docling-layout-heron",
     "docling-project--docling-layout-heron-onnx",
@@ -134,19 +137,28 @@ def is_packaged_application() -> bool:
     return bool(getattr(sys, "frozen", False) or "__compiled__" in globals())
 
 
-def resolve_model_downloader() -> str:
+def resolve_model_downloader() -> list[str]:
     if is_packaged_application():
-        companion = Path(sys.executable).resolve().with_name(PACKAGED_DOWNLOADER_NAME)
-        if companion.is_file():
-            return str(companion)
+        if sys.platform == "darwin":
+            return [str(Path(sys.executable).resolve()), INTERNAL_DOCLING_TOOLS_FLAG]
+        executable_directory = Path(sys.executable).resolve().parent
+        candidates = [executable_directory]
+        resources = packaged_resources_directory()
+        if resources is not None:
+            candidates.append(resources)
+        for directory in candidates:
+            for name in PACKAGED_DOWNLOADER_NAMES:
+                companion = directory / name
+                if companion.is_file():
+                    return [str(companion.resolve())]
         raise ModelManagementError(
-            "The packaged docling-tools.exe companion is missing. Reinstall or replace the "
+            "The packaged docling-tools companion is missing. Reinstall or replace the "
             "application folder before downloading models."
         )
 
     executable = shutil.which("docling-tools")
     if executable:
-        return executable
+        return [executable]
     raise ModelManagementError(
         "docling-tools was not found. Install the Docling optional dependencies and try again."
     )
@@ -155,11 +167,13 @@ def resolve_model_downloader() -> str:
 def build_model_download_command(
     path: str | Path,
     *,
-    executable: str | None = None,
+    command_prefix: list[str] | tuple[str, ...] | None = None,
 ) -> list[str]:
-    resolved_executable = executable or resolve_model_downloader()
+    resolved_prefix = list(command_prefix) if command_prefix is not None else resolve_model_downloader()
+    if not resolved_prefix:
+        raise ModelManagementError("docling-tools command prefix is empty.")
     return [
-        resolved_executable,
+        *resolved_prefix,
         "models",
         "download",
         "-o",

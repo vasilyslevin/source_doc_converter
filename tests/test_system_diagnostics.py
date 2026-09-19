@@ -6,6 +6,7 @@ from source_doc_converter.system_diagnostics import (
     ComponentStatus,
     SystemDiagnostics,
     check_docling,
+    check_ghostscript,
     check_ocrmypdf,
     check_tesseract,
 )
@@ -76,26 +77,37 @@ def test_tesseract_languages(monkeypatch) -> None:
 
     assert result.available
     assert result.version == "tesseract 5.5.1"
-    assert result.details == ("Source: system", "Languages: eng, spa")
+    assert result.details == (
+        "Required for searchable PDF output.",
+        "Source: system",
+        "Languages: eng, spa",
+    )
 
 
-def test_packaged_missing_tesseract_bundle_has_specific_error(monkeypatch) -> None:
+def test_missing_tesseract_has_clear_error(monkeypatch) -> None:
     monkeypatch.setattr(system_diagnostics, "discover_tesseract_installations", lambda: ())
     monkeypatch.setattr(system_diagnostics, "resolve_tesseract_executable", lambda: (None, "missing"))
-    monkeypatch.setattr(system_diagnostics, "is_packaged_application", lambda: True)
-    monkeypatch.setattr(system_diagnostics.platform, "system", lambda: "Windows")
 
     result = check_tesseract()
 
     assert not result.available
-    assert result.details == ("Source: bundled",)
-    assert "Bundled runtime not found" in (result.error or "")
+    assert result.details == ("Required for searchable PDF output.",)
+    assert result.error == "Executable not found"
 
 
 def test_missing_docling_package(monkeypatch) -> None:
     monkeypatch.setattr(system_diagnostics.importlib_util, "find_spec", lambda name: None)
 
     result = check_docling()
+
+    assert not result.available
+    assert result.error == "Package not installed"
+
+
+def test_missing_pypdf_package(monkeypatch) -> None:
+    monkeypatch.setattr(system_diagnostics.importlib_util, "find_spec", lambda name: None)
+
+    result = system_diagnostics.check_pypdf()
 
     assert not result.available
     assert result.error == "Package not installed"
@@ -126,6 +138,7 @@ def test_diagnostic_report_contains_no_sensitive_paths() -> None:
         components=(
             ComponentStatus("ocrmypdf", "OCRmyPDF", True, "17.0.0"),
             ComponentStatus("tesseract", "Tesseract OCR", True, "5.5.0", ("Languages: eng",)),
+            ComponentStatus("ghostscript", "Ghostscript", True, "10.0.0"),
             ComponentStatus("docling", "Docling", False, error="Package not installed"),
         ),
     )
@@ -142,5 +155,29 @@ def test_diagnostic_report_contains_no_sensitive_paths() -> None:
 
 def test_platform_specific_guidance() -> None:
     assert "Homebrew" in system_diagnostics.installation_guidance("ocrmypdf", "Darwin")
-    assert "packaged app" in system_diagnostics.installation_guidance("tesseract", "Windows")
+    assert "ghostscript" in system_diagnostics.installation_guidance("ocrmypdf", "Darwin").lower()
+    assert "winget" in system_diagnostics.installation_guidance("tesseract", "Windows")
     assert "package manager" in system_diagnostics.installation_guidance("ocrmypdf", "Linux")
+    assert "pypdf" in system_diagnostics.installation_guidance("pypdf", "Linux")
+
+
+def test_ghostscript_missing_executable(monkeypatch) -> None:
+    monkeypatch.setattr(system_diagnostics, "resolve_ghostscript_executable", lambda *args, **kwargs: None)
+
+    result = check_ghostscript()
+
+    assert not result.available
+    assert result.error == "Executable not found"
+
+
+def test_ghostscript_diagnostics_on_macos_uses_source_label(monkeypatch) -> None:
+    monkeypatch.setattr(system_diagnostics.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(system_diagnostics, "macos_finder_search_paths", lambda: ("/opt/homebrew/bin",))
+    monkeypatch.setattr(system_diagnostics, "resolve_ghostscript_executable", lambda *args, **kwargs: "/opt/homebrew/bin/gs")
+    monkeypatch.setattr(system_diagnostics, "_run_command", lambda command: (True, "10.0.0\n", None))
+
+    result = check_ghostscript()
+
+    assert result.available
+    assert result.details == ("Required for searchable PDF output.", "Source: Homebrew")
+    assert "/opt/homebrew/bin/gs" not in "\n".join(result.details)

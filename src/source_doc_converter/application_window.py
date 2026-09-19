@@ -44,6 +44,7 @@ from source_doc_converter.system_diagnostics import (
     OutputAvailability,
     SystemDiagnostics,
     check_output_availability,
+    check_pypdf,
 )
 
 DOCLING_OCR_SETTING = "processing/docling_ocr"
@@ -346,13 +347,19 @@ class ApplicationWindow(MainWindow):
 
     def refresh_output_availability(self) -> None:
         self.apply_output_availability(self._availability_provider())
+        pypdf = check_pypdf()
+        self._set_fast_markdown_availability(
+            pypdf.available,
+            pypdf.error or "Fast Markdown requires pypdf support.",
+        )
 
     def apply_output_availability(self, availability: OutputAvailability) -> None:
         self.searchable_pdf_checkbox.setEnabled(availability.searchable_pdf)
         if not availability.searchable_pdf:
             self.searchable_pdf_checkbox.setChecked(False)
             self.searchable_pdf_checkbox.setToolTip(
-                "Searchable PDF requires OCRmyPDF and Tesseract OCR."
+                "Searchable PDF requires OCRmyPDF, Tesseract OCR, and Ghostscript. "
+                "Windows Full still requires Ghostscript."
             )
         else:
             self.searchable_pdf_checkbox.setToolTip("")
@@ -379,6 +386,7 @@ class ApplicationWindow(MainWindow):
     def apply_diagnostics(self, diagnostics: SystemDiagnostics) -> None:
         ocrmypdf = diagnostics.component("ocrmypdf")
         tesseract = diagnostics.component("tesseract")
+        ghostscript = diagnostics.component("ghostscript")
         docling = diagnostics.component("docling")
         model_state = self._model_state_provider()
         reason = None
@@ -391,11 +399,20 @@ class ApplicationWindow(MainWindow):
             )
         self.apply_output_availability(
             OutputAvailability(
-                searchable_pdf=ocrmypdf.available and tesseract.available,
+                searchable_pdf=ocrmypdf.available and tesseract.available and ghostscript.available,
                 docling=docling.available and model_state.ready,
                 docling_reason=reason,
             )
         )
+        try:
+            pypdf = diagnostics.component("pypdf")
+        except KeyError:
+            self._set_fast_markdown_availability(True, "")
+        else:
+            self._set_fast_markdown_availability(
+                pypdf.available,
+                pypdf.error or "Fast Markdown requires pypdf support.",
+            )
 
     def show_system_check(self) -> None:
         dialog = SystemCheckDialog(self, settings=self._settings)
@@ -530,6 +547,31 @@ class ApplicationWindow(MainWindow):
             self._processing_stage = "Loading models and analyzing pages"
         self.progress_bar.setRange(0, 0)
         self._refresh_processing_text()
+
+    def _set_fast_markdown_availability(self, enabled: bool, reason: str) -> None:
+        index = self.ai_analysis_mode_combo.findData("fast")
+        if index < 0:
+            return
+        model = self.ai_analysis_mode_combo.model()
+        item = model.item(index) if hasattr(model, "item") else None
+        if item is not None:
+            item.setEnabled(enabled)
+        if enabled:
+            self.ai_analysis_mode_combo.setToolTip(
+                "Auto picks Fast for searchable text without complex table analysis. "
+                "Fast is quickest plain-text markdown. Accurate preserves richer layout. "
+                "Accurate with tables is slowest but improves table structure."
+            )
+            return
+        if self.ai_analysis_mode_combo.currentData() == "fast":
+            self.ai_analysis_mode_combo.setCurrentIndex(
+                max(0, self.ai_analysis_mode_combo.findData("auto"))
+            )
+        self.ai_analysis_mode_combo.setToolTip(
+            "Fast Markdown unavailable: "
+            + reason
+            + " Use Auto or Accurate Markdown."
+        )
 
     def _on_processing_stage_changed(self, stage: str) -> None:
         self._processing_stage = stage

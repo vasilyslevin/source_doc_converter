@@ -1,15 +1,19 @@
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from platform import system
 from threading import Event
 
 from PySide6.QtCore import QObject, Signal, Slot
 
+from source_doc_converter.runtime_paths import find_executable, macos_finder_search_paths
 from source_doc_converter.subprocess_utils import background_subprocess_kwargs
 from source_doc_converter.system_diagnostics import (
     ComponentStatus,
     SystemDiagnostics,
     collect_system_diagnostics,
+    installation_guidance,
 )
 
 
@@ -49,8 +53,29 @@ class DependencySetupWorker(QObject):
             diagnostics = self._diagnostics_provider()
             steps = self._steps_builder(diagnostics)
             if not steps:
-                self.status_changed.emit("Ready")
-                self.completed.emit()
+                missing_ocr_tools = any(
+                    not component.available
+                    and component.key in {"ocrmypdf", "tesseract", "ghostscript"}
+                    for component in diagnostics.components
+                )
+                if not missing_ocr_tools:
+                    self.status_changed.emit("Ready")
+                    self.completed.emit()
+                    return
+                if system() not in {"Windows", "Darwin"}:
+                    message = (
+                        "Guided OCR setup is available on Windows and macOS.\n\n"
+                        f"{installation_guidance('ocrmypdf', system())}"
+                    )
+                    self.status_changed.emit("Manual setup required")
+                    self.failed.emit(message)
+                    return
+                message = (
+                    "Guided OCR setup is currently unavailable.\n\n"
+                    f"{installation_guidance('ocrmypdf', system())}"
+                )
+                self.status_changed.emit("Manual setup required")
+                self.failed.emit(message)
                 return
 
             for step in steps:
@@ -133,28 +158,70 @@ class DependencySetupWorker(QObject):
 
 
 def _default_steps(diagnostics: SystemDiagnostics) -> list[DependencyInstallStep]:
+    active_system = system()
     missing: dict[str, ComponentStatus] = {
         component.key: component
         for component in diagnostics.components
         if not component.available
     }
     steps: list[DependencyInstallStep] = []
-    if "tesseract" in missing:
-        steps.append(
-            DependencyInstallStep(
-                "tesseract",
-                "Tesseract OCR",
-                ("winget", "install", "-e", "--id", "UB-Mannheim.TesseractOCR"),
+    if active_system == "Windows":
+        if shutil.which("winget") is None:
+            return []
+        if "tesseract" in missing:
+            steps.append(
+                DependencyInstallStep(
+                    "tesseract",
+                    "Tesseract OCR",
+                    ("winget", "install", "-e", "--id", "UB-Mannheim.TesseractOCR"),
+                )
             )
-        )
-    if "ocrmypdf" in missing:
-        steps.append(
-            DependencyInstallStep(
-                "ocrmypdf",
-                "OCRmyPDF",
-                ("winget", "install", "-e", "--id", "OCRmyPDF.OCRmyPDF"),
+        if "ocrmypdf" in missing:
+            steps.append(
+                DependencyInstallStep(
+                    "ocrmypdf",
+                    "OCRmyPDF",
+                    ("winget", "install", "-e", "--id", "OCRmyPDF.OCRmyPDF"),
+                )
             )
-        )
+        if "ghostscript" in missing:
+            steps.append(
+                DependencyInstallStep(
+                    "ghostscript",
+                    "Ghostscript",
+                    ("winget", "install", "-e", "--id", "ArtifexSoftware.GhostScript"),
+                )
+            )
+        return steps
+    if active_system == "Darwin":
+        brew_executable = find_executable("brew", extra_directories=macos_finder_search_paths())
+        if brew_executable is None:
+            return []
+        if "ocrmypdf" in missing:
+            steps.append(
+                DependencyInstallStep(
+                    "ocrmypdf",
+                    "OCRmyPDF",
+                    (brew_executable, "install", "ocrmypdf"),
+                )
+            )
+        if "tesseract" in missing:
+            steps.append(
+                DependencyInstallStep(
+                    "tesseract",
+                    "Tesseract OCR",
+                    (brew_executable, "install", "tesseract"),
+                )
+            )
+        if "ghostscript" in missing:
+            steps.append(
+                DependencyInstallStep(
+                    "ghostscript",
+                    "Ghostscript",
+                    (brew_executable, "install", "ghostscript"),
+                )
+            )
+        return steps
     return steps
 
 

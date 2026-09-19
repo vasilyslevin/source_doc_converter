@@ -1,5 +1,3 @@
-# Windows-only constraints for the packaged application.
-# Keep normal macOS/Linux development installs unconstrained.
 docling==2.128.0
 transformers==4.51.3
 torch==2.14.0

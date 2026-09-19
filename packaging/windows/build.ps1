@@ -2,6 +2,7 @@ param(
     [string]$Python = "python",
     [string]$OutputDirectory = "",
     [string]$TesseractRoot = "",
+    [string]$InstallerCacheDirectory = "",
     [ValidateSet("Full", "Lite")]
     [string]$PackageFlavor = "Full"
 )
@@ -12,6 +13,11 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $OutputDirectory = Join-Path $RepositoryRoot "build\windows"
 } else {
     $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
+}
+if ([string]::IsNullOrWhiteSpace($InstallerCacheDirectory)) {
+    $InstallerCacheDirectory = Join-Path $RepositoryRoot "build\tesseract-cache"
+} else {
+    $InstallerCacheDirectory = [System.IO.Path]::GetFullPath($InstallerCacheDirectory)
 }
 
 $SourceRoot = Join-Path $RepositoryRoot "src"
@@ -41,21 +47,128 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path $IconPath -PathType Leaf)) {
     throw "Could not generate the Windows application icon."
 }
 
-$FindTorchvisionExtension = @'
+$InspectTorchvisionEnvironment = @'
+import importlib.metadata
 import importlib.util
+import json
+import struct
 from pathlib import Path
+
+from packaging.requirements import Requirement
+from packaging.version import Version
+import torch
+import torchvision
+
+
+def read_pe_machine(path: Path) -> int:
+    with path.open("rb") as fh:
+        dos_header = fh.read(64)
+        if len(dos_header) < 64 or dos_header[:2] != b"MZ":
+            raise SystemExit(f"Not a PE file: {path}")
+        pe_offset = struct.unpack("<I", dos_header[60:64])[0]
+        fh.seek(pe_offset)
+        pe_header = fh.read(6)
+        if len(pe_header) < 6 or pe_header[:4] != b"PE\0\0":
+            raise SystemExit(f"Invalid PE header: {path}")
+        return struct.unpack("<H", pe_header[4:6])[0]
+
+
+torch_version = Version(torch.__version__.split("+", 1)[0])
+torchvision_version = Version(torchvision.__version__.split("+", 1)[0])
+requires_dist = importlib.metadata.metadata("torchvision").get_all("Requires-Dist") or []
+torch_requirement = None
+for item in requires_dist:
+    requirement = Requirement(item)
+    if requirement.name.lower() == "torch":
+        torch_requirement = requirement
+        break
+if torch_requirement is None:
+    raise SystemExit("torchvision metadata does not declare a torch dependency.")
+if not torch_requirement.specifier.contains(str(torch_version), prereleases=True):
+    raise SystemExit(
+        f"Incompatible torch/torchvision pair: torch {torch.__version__} does not satisfy {torch_requirement.specifier}."
+    )
+if torch.version.cuda is not None:
+    raise SystemExit(
+        f"Expected CPU torch wheel for packaging, but torch reports CUDA runtime {torch.version.cuda}."
+    )
+
 spec = importlib.util.find_spec("torchvision")
 if spec is None or spec.submodule_search_locations is None:
     raise SystemExit("torchvision package was not found")
-root = Path(next(iter(spec.submodule_search_locations)))
-matches = sorted(root.glob("_C*.pyd"))
+torchvision_root = Path(next(iter(spec.submodule_search_locations)))
+matches = sorted(torchvision_root.glob("_C*.pyd"))
 if not matches:
     raise SystemExit("torchvision native extension _C.pyd was not found")
-print(matches[0])
+extension = matches[0]
+if read_pe_machine(extension) != 0x8664:
+    raise SystemExit(f"torchvision native extension has unexpected architecture: {extension}")
+torch_lib_dir = Path(torch.__file__).resolve().parent / "lib"
+if not torch_lib_dir.is_dir():
+    raise SystemExit(f"Torch DLL directory was not found: {torch_lib_dir}")
+if not any(torch_lib_dir.glob("*.dll")):
+    raise SystemExit(f"Torch DLL directory does not contain DLL files: {torch_lib_dir}")
+
+print(
+    json.dumps(
+        {
+            "torch_version": str(torch_version),
+            "torchvision_version": str(torchvision_version),
+            "torch_requirement": str(torch_requirement.specifier),
+            "torchvision_extension": str(extension),
+            "torchvision_root": str(torchvision_root),
+            "torch_lib_dir": str(torch_lib_dir),
+        }
+    )
+)
 '@
-$TorchvisionExtension = (& $Python -c $FindTorchvisionExtension).Trim()
-if ($LASTEXITCODE -ne 0 -or -not (Test-Path $TorchvisionExtension -PathType Leaf)) {
+$TorchvisionInfoJson = (& $Python -c $InspectTorchvisionEnvironment).Trim()
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($TorchvisionInfoJson)) {
+    throw "Could not inspect the installed torch/torchvision runtime."
+}
+$TorchvisionInfo = $TorchvisionInfoJson | ConvertFrom-Json
+$TorchvisionExtension = [string]$TorchvisionInfo.torchvision_extension
+$TorchvisionRoot = [string]$TorchvisionInfo.torchvision_root
+$TorchLibDirectory = [string]$TorchvisionInfo.torch_lib_dir
+if (-not (Test-Path $TorchvisionExtension -PathType Leaf)) {
     throw "Could not locate the installed torchvision native extension."
+}
+if (-not (Test-Path $TorchLibDirectory -PathType Container)) {
+    throw "Could not locate the installed torch DLL directory."
+}
+
+$CheckSciPyRuntime = @'
+import importlib
+from scipy import ndimage
+
+array_api_namespaces = (
+    "scipy._external.array_api_compat",
+    "scipy._lib.array_api_compat",
+)
+detected_namespace = None
+for namespace in array_api_namespaces:
+    try:
+        importlib.import_module(f"{namespace}.numpy.fft")
+    except ModuleNotFoundError:
+        continue
+    detected_namespace = namespace
+    break
+
+if detected_namespace is None:
+    raise SystemExit(
+        "SciPy array API compatibility module is unavailable "
+        "(expected scipy._external.array_api_compat.numpy.fft or scipy._lib.array_api_compat.numpy.fft)."
+    )
+
+result = ndimage.gaussian_filter1d([1.0, 2.0, 3.0], sigma=0.1)
+if len(result) != 3:
+    raise SystemExit("SciPy ndimage pre-freeze check produced an unexpected result.")
+
+print(detected_namespace)
+'@
+$ScipyArrayApiNamespace = (& $Python -c $CheckSciPyRuntime).Trim()
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($ScipyArrayApiNamespace)) {
+    throw "SciPy pre-freeze check failed."
 }
 
 $CommonArguments = @(
@@ -71,10 +184,15 @@ $DoclingArguments = @(
     "--collect-all=docling",
     "--collect-all=docling_core",
     "--collect-all=docling_parse",
+    "--collect-all=pypdf",
     "--collect-all=rapidocr",
     "--collect-all=transformers",
+    "--collect-submodules=$ScipyArrayApiNamespace.numpy",
+    "--collect-binaries=torch",
     "--collect-binaries=torchvision",
     "--add-binary=$TorchvisionExtension;torchvision",
+    "--add-binary=$TorchLibDirectory\\*.dll;torch\\lib",
+    "--add-data=$TorchvisionRoot\\_meta_registrations.py;torchvision",
     "--runtime-hook=$TorchvisionRuntimeHook",
     "--hidden-import=docling.cli.tools",
     "--hidden-import=docling.document_converter"
@@ -142,6 +260,23 @@ try {
         Remove-Item $OcrDistribution -Recurse -Force
     }
 
+    $PackagedTorchvisionExtensions = Get-ChildItem -Path $Distribution -Filter "_C*.pyd" -File -Recurse |
+        Where-Object { $_.FullName -like "*\\torchvision\\*" }
+    if ($PackagedTorchvisionExtensions.Count -eq 0) {
+        throw "Packaged torchvision native extension _C.pyd was not found."
+    }
+
+    $PackagedTorchLibDirectory = @(
+        Join-Path $Distribution "torch\\lib",
+        Join-Path $Distribution "_internal\\torch\\lib"
+    ) | Where-Object { Test-Path $_ -PathType Container } | Select-Object -First 1
+    if (-not $PackagedTorchLibDirectory) {
+        throw "Packaged torch DLL directory was not found in torch\\lib or _internal\\torch\\lib."
+    }
+    if ((Get-ChildItem -Path $PackagedTorchLibDirectory -Filter "*.dll" -File).Count -eq 0) {
+        throw "Packaged torch DLL directory does not contain DLL files."
+    }
+
     & (Join-Path $Distribution "docling-tools.exe") --runtime-check
     if ($LASTEXITCODE -ne 0) {
         throw "Packaged Docling runtime check failed with exit code $LASTEXITCODE."
@@ -149,10 +284,18 @@ try {
 
     if ($PackageFlavor -eq "Full") {
         $TesseractDestination = Join-Path $Distribution "tools\tesseract"
+        $TesseractWorkDirectory = Join-Path $WorkDirectory "tesseract"
         if ([string]::IsNullOrWhiteSpace($TesseractRoot)) {
-            & $TesseractBundler -DestinationDirectory $TesseractDestination -WorkDirectory (Join-Path $OutputDirectory "tesseract")
+            & $TesseractBundler `
+                -DestinationDirectory $TesseractDestination `
+                -WorkDirectory $TesseractWorkDirectory `
+                -InstallerCacheDirectory $InstallerCacheDirectory
         } else {
-            & $TesseractBundler -SourceDirectory $TesseractRoot -DestinationDirectory $TesseractDestination -WorkDirectory (Join-Path $OutputDirectory "tesseract")
+            & $TesseractBundler `
+                -SourceDirectory $TesseractRoot `
+                -DestinationDirectory $TesseractDestination `
+                -WorkDirectory $TesseractWorkDirectory `
+                -InstallerCacheDirectory $InstallerCacheDirectory
         }
         if ($LASTEXITCODE -ne 0) {
             throw "Tesseract bundling failed with exit code $LASTEXITCODE."

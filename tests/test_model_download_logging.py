@@ -42,7 +42,7 @@ def test_multiline_downloader_failure_is_preserved(monkeypatch, qtbot, tmp_path:
         "Popen",
         lambda *args, **kwargs: FakeProcess(output_lines, 1),
     )
-    worker = ModelDownloadWorker(tmp_path / "models", executable="docling-tools")
+    worker = ModelDownloadWorker(tmp_path / "models", command_prefix=["docling-tools"])
     failures = []
     worker.failed.connect(failures.append)
 
@@ -64,7 +64,7 @@ def test_status_streams_artifact_name_and_real_sizes(monkeypatch, qtbot, tmp_pat
         lambda *args, **kwargs: FakeProcess(lines, 0),
     )
     monkeypatch.setattr(model_downloader, "mark_models_ready", lambda path: None)
-    worker = ModelDownloadWorker(tmp_path / "models", executable="docling-tools")
+    worker = ModelDownloadWorker(tmp_path / "models", command_prefix=["docling-tools"])
     statuses = []
     worker.status_changed.connect(statuses.append)
 
@@ -83,7 +83,7 @@ def test_worker_sanitizes_model_path_in_details(monkeypatch, qtbot, tmp_path: Pa
         "Popen",
         lambda *args, **kwargs: FakeProcess([line], 1),
     )
-    worker = ModelDownloadWorker(model_dir, executable="docling-tools")
+    worker = ModelDownloadWorker(model_dir, command_prefix=["docling-tools"])
     details = []
     worker.details_changed.connect(details.append)
 

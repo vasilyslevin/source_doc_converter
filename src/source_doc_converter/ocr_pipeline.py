@@ -459,7 +459,10 @@ def _fast_markdown_export(source: Path) -> str:
     try:
         from pypdf import PdfReader
     except ImportError as error:
-        raise ConversionError("Fast Markdown mode requires pypdf support in this runtime.") from error
+        raise ConversionError(
+            "Fast Markdown mode requires pypdf support in this runtime. "
+            "Install pypdf and retry, or choose Accurate Markdown."
+        ) from error
 
     reader = PdfReader(str(source))
     chunks: list[str] = []

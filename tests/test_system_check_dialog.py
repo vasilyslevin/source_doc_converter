@@ -86,3 +86,13 @@ def test_status_row_details_button_opens_shared_dialog_during_active_setup(qtbot
 
     assert dialog._details_dialog.isVisible()
     assert "setup output line" in dialog._details_dialog.details_edit.toPlainText()
+
+
+def test_dialog_guided_setup_text_mentions_windows_full_ghostscript_requirement(qtbot) -> None:
+    dialog = SystemCheckDialog(diagnostics_provider=sample_diagnostics)
+    qtbot.addWidget(dialog)
+
+    labels = [label.text() for label in dialog.findChildren(type(dialog.guidance_label))]
+
+    assert any("Windows Full bundles OCRmyPDF and Tesseract" in text for text in labels)
+    assert any("requires Ghostscript" in text for text in labels)

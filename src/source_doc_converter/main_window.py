@@ -76,6 +76,9 @@ class MainWindow(QMainWindow):
         self.drop_area.paths_dropped.connect(self.add_paths)
         self.queue = QListWidget()
         self.queue.setAlternatingRowColors(True)
+        self.queue.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.queue.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
+        self.queue.setMinimumHeight(220)
 
         self.add_files_button = QPushButton("Add PDFs")
         self.add_files_button.clicked.connect(self.choose_files)
@@ -142,7 +145,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout()
         layout.addWidget(self.drop_area)
         layout.addLayout(queue_controls)
-        layout.addWidget(self.queue)
+        layout.addWidget(self.queue, 1)
         layout.addWidget(self.output_group)
         layout.addWidget(self.activity_label)
         layout.addLayout(action_row)
@@ -294,6 +297,10 @@ class MainWindow(QMainWindow):
         self.progress_bar.setFormat(f"Processing {index} of {total}: {filename}")
         self._set_activity(f"Processing {filename}")
         self.statusBar().showMessage(f"Processing {filename}")
+        item = self.queue.item(index - 1)
+        if item is not None:
+            self.queue.setCurrentItem(item)
+            self.queue.scrollToItem(item, QListWidget.ScrollHint.EnsureVisible)
 
     def _on_file_succeeded(self, input_path: str, output_path: str) -> None:
         self._completed_count += 1
@@ -348,7 +355,6 @@ class MainWindow(QMainWindow):
 
     def _set_inputs_enabled(self, enabled: bool) -> None:
         self.drop_area.setEnabled(enabled)
-        self.queue.setEnabled(enabled)
         self.output_group.setEnabled(enabled)
         for button in (
             self.add_files_button,

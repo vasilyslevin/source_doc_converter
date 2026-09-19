@@ -230,6 +230,69 @@ def test_fast_mode_json_request_falls_back_with_warning(monkeypatch, tmp_path: P
     assert (tmp_path / "out" / "fallback.json").is_file()
 
 
+def test_auto_mode_falls_back_when_fast_preflight_unavailable(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "no-pypdf.pdf"
+    source.write_bytes(b"%PDF-1.4\n")
+    model_dir = tmp_path / "models"
+    model_dir.mkdir()
+
+    class FakeDocument:
+        def export_to_markdown(self, *, page_break_placeholder: str) -> str:
+            return "md"
+
+    class FakeResult:
+        document = FakeDocument()
+
+    class FakeConverter:
+        def convert(self, input_path: Path):
+            return FakeResult()
+
+    monkeypatch.setattr(ocr_pipeline, "_validate_pdf_text", lambda _: None)
+    monkeypatch.setattr(ocr_pipeline, "require_ready_model_directory", lambda _: model_dir)
+    monkeypatch.setattr(
+        ocr_pipeline,
+        "create_local_pdf_converter_with_metrics",
+        lambda *args, **kwargs: (FakeConverter(), ConverterBuildMetrics(cache_hit=False, init_seconds=0)),
+    )
+    monkeypatch.setattr(ocr_pipeline, "offline_environment", lambda *args, **kwargs: nullcontext())
+
+    result = run_docling(
+        source,
+        tmp_path / "out",
+        export_markdown=True,
+        export_json=False,
+        analysis_mode="auto",
+    )
+
+    assert result.effective_analysis_mode == "accurate"
+    assert any("could not preflight" in warning for warning in result.warnings)
+
+
+def test_fast_mode_without_pypdf_reports_actionable_error(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "fast.pdf"
+    source.write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setattr(
+        ocr_pipeline,
+        "_fast_markdown_export",
+        lambda _: (_ for _ in ()).throw(
+            OcrError(
+                "Fast Markdown mode requires pypdf support in this runtime. "
+                "Install pypdf and retry, or choose Accurate Markdown."
+            )
+        ),
+    )
+
+    with pytest.raises(OcrError, match="Install pypdf and retry"):
+        run_docling(
+            source,
+            tmp_path / "out",
+            export_markdown=True,
+            export_json=False,
+            analysis_mode="fast",
+        )
+
+
 def test_ocr_timing_contains_preflight_and_validation(monkeypatch, tmp_path: Path) -> None:
     source = tmp_path / "timed.pdf"
     source.write_bytes(b"%PDF-1.4\n")

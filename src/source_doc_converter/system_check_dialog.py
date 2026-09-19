@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from source_doc_converter.dependency_setup import DependencySetupWorker
+from source_doc_converter.dependency_setup import DependencySetupWorker, _default_steps
 from source_doc_converter.error_dialog import ErrorDetailsDialog
 from source_doc_converter.model_downloader import ModelDownloadWorker
 from source_doc_converter.model_management import (
@@ -115,8 +115,8 @@ class SystemCheckDialog(QDialog):
             self.guidance_label.textInteractionFlags()
         )
 
-        dependency_group = QGroupBox("Guided dependency setup")
-        self.setup_dependencies_button = QPushButton("Install Missing Dependencies")
+        dependency_group = QGroupBox("Guided OCR tool setup")
+        self.setup_dependencies_button = QPushButton("Install Missing OCR Tools")
         self.setup_dependencies_button.clicked.connect(self.start_dependency_setup)
         self.cancel_setup_button = QPushButton("Cancel Setup")
         self.cancel_setup_button.setEnabled(False)
@@ -129,7 +129,8 @@ class SystemCheckDialog(QDialog):
         dependency_layout.addWidget(
             QLabel(
                 "Installs missing OCR dependencies in the background. "
-                "Only approved vendor installers may open visible windows."
+                "Uses Homebrew on macOS or winget on Windows after explicit confirmation. "
+                "Windows Full bundles OCRmyPDF and Tesseract, but searchable PDF still requires Ghostscript."
             )
         )
         dependency_layout.addLayout(dependency_buttons)
@@ -239,7 +240,10 @@ class SystemCheckDialog(QDialog):
             "Clear the saved folder selection without deleting any model files."
         )
         self.download_model_button.setEnabled(not active)
-        self.setup_dependencies_button.setEnabled(not active)
+        diagnostics = self._diagnostics
+        self.setup_dependencies_button.setEnabled(
+            bool(diagnostics and _default_steps(diagnostics)) and not active
+        )
 
     def choose_model_directory(self) -> None:
         state = self._model_state or load_model_directory(self._settings)
@@ -302,11 +306,22 @@ class SystemCheckDialog(QDialog):
     def start_dependency_setup(self) -> None:
         if self._download_thread is not None or self._dependency_thread is not None:
             return
+        diagnostics = self._diagnostics or self._diagnostics_provider()
+        steps = _default_steps(diagnostics)
+        if not steps:
+            QMessageBox.information(
+                self,
+                "Manual setup required",
+                "No guided installer is available for the currently missing OCR tools.\n\n"
+                "Use the guidance shown in System Check to install missing tools manually.",
+            )
+            return
+        commands = "\n".join(f"- {' '.join(step.command)}" for step in steps)
         answer = QMessageBox.question(
             self,
-            "Install missing dependencies?",
-            "This guided setup may run background package installation commands "
-            "for missing OCR dependencies.\n\nContinue?",
+            "Install missing OCR tools?",
+            "This guided setup will run the following commands for missing OCR tools:\n\n"
+            f"{commands}\n\nContinue?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -314,7 +329,8 @@ class SystemCheckDialog(QDialog):
             return
         self._dependency_thread = QThread(self)
         self._dependency_worker = DependencySetupWorker(
-            diagnostics_provider=self._diagnostics_provider
+            diagnostics_provider=self._diagnostics_provider,
+            steps_builder=lambda _: steps,
         )
         self._dependency_worker.moveToThread(self._dependency_thread)
         self._dependency_thread.started.connect(self._dependency_worker.run)
@@ -441,12 +457,14 @@ class SystemCheckDialog(QDialog):
 
         guidance = [installation_guidance(component) for component in missing_components]
         self.guidance_label.setText("\n".join(dict.fromkeys(guidance)))
+        has_guided_steps = bool(_default_steps(diagnostics))
+        self.setup_dependencies_button.setEnabled(has_guided_steps and not self._setup_active())
 
     def choose_report_path(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
             self,
             "Save system report",
-            "filing-document-converter-system-check.txt",
+            "source-document-converter-system-check.txt",
             "Text files (*.txt)",
         )
         if path:

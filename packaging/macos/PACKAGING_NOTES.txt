@@ -1,0 +1,6 @@
+Source Document Converter macOS development build (ad-hoc signed)
+
+- This package is for validation and testing.
+- Apple Silicon (arm64) package only.
+- OCRmyPDF, Tesseract, and Ghostscript are discovered from validated system/manual installations.
+- Docling model artifacts are not bundled and are downloaded only through the in-app model setup flow.

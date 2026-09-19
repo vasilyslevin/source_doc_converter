@@ -38,11 +38,11 @@ class ModelDownloadWorker(QObject):
         self,
         model_directory: Path,
         *,
-        executable: str | None = None,
+        command_prefix: list[str] | tuple[str, ...] | None = None,
     ) -> None:
         super().__init__()
         self._model_directory = model_directory.resolve()
-        self._executable = executable
+        self._command_prefix = list(command_prefix) if command_prefix is not None else None
         self._cancel_event = Event()
         self._process: subprocess.Popen[str] | None = None
         self._detail_lines: list[str] = []
@@ -57,7 +57,7 @@ class ModelDownloadWorker(QObject):
 
             command = build_model_download_command(
                 self._model_directory,
-                executable=self._executable,
+                command_prefix=self._command_prefix,
             )
             self._model_directory.mkdir(parents=True, exist_ok=True)
             self.status_changed.emit("Preparing download…")

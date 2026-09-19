@@ -44,6 +44,7 @@ def test_windows_workflow_caches_pinned_tesseract_installer() -> None:
 
     assert "Read Tesseract lock metadata" in workflow
     assert "actions/cache@v4" in workflow
+    assert "build/tesseract-cache" in workflow
     assert "windows-tesseract-installer-${{ runner.os }}" in workflow
     assert "${{ env.TESSERACT_LOCK_VERSION }}" in workflow
     assert "${{ env.TESSERACT_LOCK_SHA256 }}" in workflow
@@ -86,6 +87,18 @@ def test_windows_build_hashes_full_tesseract_payload() -> None:
     assert "$HashTargets = $HashTargets | Sort-Object -Unique" in build_script
 
 
+def test_windows_build_preserves_tesseract_installer_cache_outside_output_cleanup() -> None:
+    build_script = (ROOT / "packaging" / "windows" / "build.ps1").read_text(encoding="utf-8")
+    workflow = WINDOWS_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "[string]$InstallerCacheDirectory = \"\"" in build_script
+    assert 'Join-Path $RepositoryRoot "build\\tesseract-cache"' in build_script
+    assert "Remove-Item $OutputDirectory -Recurse -Force" in build_script
+    assert "Remove-Item $InstallerCacheDirectory -Recurse -Force" not in build_script
+    assert "-InstallerCacheDirectory $InstallerCacheDirectory" in build_script
+    assert "build.ps1 -InstallerCacheDirectory build/tesseract-cache" in workflow
+
+
 def test_windows_workflow_runs_hocr_smoke_test() -> None:
     workflow = WINDOWS_WORKFLOW.read_text(encoding="utf-8")
 
@@ -108,7 +121,38 @@ def test_windows_build_supports_lite_package() -> None:
     assert "build.ps1 -PackageFlavor Lite" in workflow
     assert "SourceDocumentConverter-Windows-x64-Full" in workflow
     assert "SourceDocumentConverter-Windows-x64-Lite" in workflow
-    assert "Install Missing Dependencies" in notes
+    assert "Install Missing OCR Tools" in notes
+
+
+def test_windows_workflow_smokes_lite_distribution_independently() -> None:
+    workflow = WINDOWS_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "Smoke test Lite packaged executables" in workflow
+    assert "$GuiPathLite = Join-Path $env:DIST_DIR_LITE \"SourceDocumentConverter.exe\"" in workflow
+    assert "$GuiProcessLite = Start-Process -FilePath $GuiPathLite -ArgumentList \"--package-smoke-test\"" in workflow
+    assert "Join-Path $env:DIST_DIR_LITE \"docling-tools.exe\") --help" in workflow
+    assert "Join-Path $env:DIST_DIR_LITE \"docling-tools.exe\") --runtime-check" in workflow
+    assert "Join-Path $env:DIST_DIR_LITE \"docling-tools.exe\") models download --help" in workflow
+
+
+def test_windows_workflow_enforces_lite_negative_payload_assertions() -> None:
+    workflow = WINDOWS_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "$ForbiddenPatterns = @(" in workflow
+    assert "(?i)(^|[\\\\/])pikepdf([\\\\/]|$)" in workflow
+    assert "(?i)(^|[\\\\/])qpdf\\\\.exe$" in workflow
+    assert "(?i)(^|[\\\\/])libqpdf[^\\\\/]*\\\\.dll$" in workflow
+    assert "(?i)(^|[\\\\/])gswin(32|64)c?\\\\.exe$" in workflow
+    assert "(?i)(^|[\\\\/])gsdll(32|64)\\\\.dll$" in workflow
+    assert "(?i)(^|[\\\\/])libgs[^\\\\/]*\\\\.dll$" in workflow
+    assert "Lite package unexpectedly contains forbidden payload" in workflow
+
+
+def test_tesseract_bundle_metadata_does_not_include_source_paths() -> None:
+    script = BUNDLE_SCRIPT.read_text(encoding="utf-8")
+
+    assert "\"Provenance: Pinned UB-Mannheim installer archive (checksum-verified extraction)\"" in script
+    assert "\"Source directory: $SourceDirectory\"" not in script
 
 
 def test_tesseract_lock_contains_version_and_checksum() -> None:
