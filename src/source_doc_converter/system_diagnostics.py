@@ -77,7 +77,7 @@ class SystemDiagnostics:
             ]
         )
         for component in self.components:
-            state = "Available" if component.available else "Unavailable"
+            state = component_state_text(component)
             version = f" ({component.version})" if component.version else ""
             lines.append(f"- {component.label}: {state}{version}")
             for detail in component.details:
@@ -231,7 +231,15 @@ def check_tesseract() -> ComponentStatus:
 def check_ghostscript() -> ComponentStatus:
     executable = resolve_ghostscript_executable()
     if executable is None:
-        return ComponentStatus("ghostscript", "Ghostscript", False, error="Executable not found")
+        return ComponentStatus(
+            "ghostscript",
+            "Ghostscript",
+            False,
+            details=(
+                "Optional — not installed. Standard searchable PDF output works without Ghostscript.",
+                "Used for PDF/A and advanced OCRmyPDF post-processing.",
+            ),
+        )
 
     succeeded, output, error = _run_command([executable, "--version"])
     details = ("Optional/recommended for PDF/A and advanced OCRmyPDF post-processing.",)
@@ -307,6 +315,19 @@ def check_homebrew() -> ComponentStatus:
         details=("Required for guided OCR tool installation.",),
         error=error,
     )
+
+
+def component_state_text(component: ComponentStatus) -> str:
+    if (
+        component.key == "ghostscript"
+        and not component.available
+        and (
+            component.error is None
+            or component.error == "Executable not found"
+        )
+    ):
+        return "Optional — not installed"
+    return "Available" if component.available else "Unavailable"
 
 
 def installation_guidance(component: str, operating_system: str | None = None) -> str:

@@ -1,12 +1,13 @@
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QThread, Signal
-from PySide6.QtGui import QCloseEvent, QColor
+from PySide6.QtCore import QSettings, QSize, QThread, QUrl, Signal
+from PySide6.QtGui import QCloseEvent, QColor, QDesktopServices, QShowEvent
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFileDialog,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -14,12 +15,14 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
+from source_doc_converter import ui_geometry
 from source_doc_converter.dependency_setup import DependencySetupWorker, _default_steps
 from source_doc_converter.error_dialog import ErrorDetailsDialog
 from source_doc_converter.model_downloader import ModelDownloadWorker
@@ -32,23 +35,27 @@ from source_doc_converter.model_management import (
 from source_doc_converter.system_diagnostics import (
     SystemDiagnostics,
     collect_system_diagnostics,
+    component_state_text,
     installation_guidance,
 )
+
+GHOSTSCRIPT_RELEASES_URL = "https://ghostscript.com/releases/"
 
 
 class ActivityDetailsDialog(QDialog):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Setup details")
-        self.resize(760, 420)
         self.details_edit = QPlainTextEdit()
         self.details_edit.setReadOnly(True)
+        self.details_edit.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.reject)
         layout = QVBoxLayout()
         layout.addWidget(self.details_edit)
         layout.addWidget(buttons)
         self.setLayout(layout)
+        ui_geometry.apply_initial_geometry(self, QSize(760, 420))
 
     def append_line(self, line: str) -> None:
         text = self.details_edit.toPlainText()
@@ -56,6 +63,10 @@ class ActivityDetailsDialog(QDialog):
             self.details_edit.setPlainText(f"{text}\n{line}")
         else:
             self.details_edit.setPlainText(line)
+
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        ui_geometry.clamp_widget_to_available_screen(self)
 
 
 class SystemCheckDialog(QDialog):
@@ -82,7 +93,6 @@ class SystemCheckDialog(QDialog):
         self._details_dialog = ActivityDetailsDialog(self)
 
         self.setWindowTitle("System Check")
-        self.resize(760, 600)
 
         self.system_label = QLabel()
         self.system_label.setWordWrap(True)
@@ -109,26 +119,30 @@ class SystemCheckDialog(QDialog):
         self.component_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.component_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
 
-        self.guidance_label = QLabel()
-        self.guidance_label.setWordWrap(True)
-        self.guidance_label.setTextInteractionFlags(
-            self.guidance_label.textInteractionFlags()
-        )
+        self.guidance_label = QPlainTextEdit()
+        self.guidance_label.setReadOnly(True)
+        self.guidance_label.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self.guidance_label.setMinimumHeight(72)
+        self.guidance_label.setPlaceholderText("No installation guidance needed.")
 
         dependency_group = QGroupBox("Guided OCR tool setup")
         self.setup_dependencies_button = QPushButton("Install Missing OCR Tools")
         self.setup_dependencies_button.clicked.connect(self.start_dependency_setup)
+        self.ghostscript_button = QPushButton("Get Ghostscript…")
+        self.ghostscript_button.clicked.connect(self.open_ghostscript_download_page)
+        self.ghostscript_button.setVisible(False)
         self.cancel_setup_button = QPushButton("Cancel Setup")
         self.cancel_setup_button.setEnabled(False)
         self.cancel_setup_button.clicked.connect(self.cancel_setup)
         dependency_buttons = QHBoxLayout()
         dependency_buttons.addWidget(self.setup_dependencies_button)
+        dependency_buttons.addWidget(self.ghostscript_button)
         dependency_buttons.addWidget(self.cancel_setup_button)
         dependency_buttons.addStretch()
         dependency_layout = QVBoxLayout()
         dependency_layout.addWidget(
             QLabel(
-                "Installs missing OCR dependencies in the background. "
+                "Installs missing OCRmyPDF/Tesseract dependencies in the background. "
                 "Uses Homebrew on macOS or winget on Windows after explicit confirmation. "
                 "Windows Full bundles OCRmyPDF and Tesseract. "
                 "Ghostscript remains optional/recommended for PDF/A and advanced post-processing."
@@ -173,18 +187,28 @@ class SystemCheckDialog(QDialog):
         buttons.addStretch()
         buttons.addWidget(self.close_button)
 
+        content_layout = QVBoxLayout()
+        content_layout.addWidget(self.system_label)
+        content_layout.addLayout(status_row)
+        content_layout.addWidget(self.component_table)
+        content_layout.addWidget(self.guidance_label)
+        content_layout.addWidget(dependency_group)
+        content_layout.addWidget(model_group)
+        content = QWidget()
+        content.setLayout(content_layout)
+        content_scroll = QScrollArea()
+        content_scroll.setWidgetResizable(True)
+        content_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        content_scroll.setWidget(content)
         layout = QVBoxLayout()
-        layout.addWidget(self.system_label)
-        layout.addLayout(status_row)
-        layout.addWidget(self.component_table)
-        layout.addWidget(self.guidance_label)
-        layout.addWidget(dependency_group)
-        layout.addWidget(model_group)
+        layout.addWidget(content_scroll)
         layout.addLayout(buttons)
         self.setLayout(layout)
         self.setTabOrder(self.details_button, self.setup_dependencies_button)
-        self.setTabOrder(self.setup_dependencies_button, self.cancel_setup_button)
+        self.setTabOrder(self.setup_dependencies_button, self.ghostscript_button)
+        self.setTabOrder(self.ghostscript_button, self.cancel_setup_button)
         self.setTabOrder(self.cancel_setup_button, self.choose_model_button)
+        ui_geometry.apply_initial_geometry(self, QSize(760, 600))
 
         self.refresh()
 
@@ -358,6 +382,8 @@ class SystemCheckDialog(QDialog):
         self.reset_model_button.setEnabled(not active)
         self.download_model_button.setEnabled(not active)
         self.setup_dependencies_button.setEnabled(not active)
+        if self.ghostscript_button.isVisible():
+            self.ghostscript_button.setEnabled(not active)
         self.cancel_download_button.setEnabled(active and model_download)
         self.cancel_setup_button.setEnabled(active and not model_download)
         self.refresh_button.setEnabled(not active)
@@ -448,10 +474,17 @@ class SystemCheckDialog(QDialog):
 
         self.component_table.setRowCount(len(diagnostics.components))
         missing_components: list[str] = []
+        ghostscript_missing = False
         for row, component in enumerate(diagnostics.components):
             self.component_table.setItem(row, 0, QTableWidgetItem(component.label))
-            status_item = QTableWidgetItem("Available" if component.available else "Unavailable")
-            status_item.setForeground(QColor("#18794e" if component.available else "#b42318"))
+            status_item = QTableWidgetItem(component_state_text(component))
+            if component.available:
+                status_color = "#18794e"
+            elif component.key == "ghostscript":
+                status_color = "#9a6700"
+            else:
+                status_color = "#b42318"
+            status_item.setForeground(QColor(status_color))
             self.component_table.setItem(row, 1, status_item)
             details = []
             if component.version:
@@ -462,11 +495,16 @@ class SystemCheckDialog(QDialog):
             self.component_table.setItem(row, 2, QTableWidgetItem("; ".join(details)))
             if not component.available:
                 missing_components.append(component.key)
+                if component.key == "ghostscript":
+                    ghostscript_missing = True
 
         guidance = [installation_guidance(component) for component in missing_components]
-        self.guidance_label.setText("\n".join(dict.fromkeys(guidance)))
+        self.guidance_label.setPlainText("\n".join(dict.fromkeys(guidance)))
         has_guided_steps = bool(_default_steps(diagnostics))
         self.setup_dependencies_button.setEnabled(has_guided_steps and not self._setup_active())
+        show_ghostscript_action = diagnostics.operating_system == "Windows" and ghostscript_missing
+        self.ghostscript_button.setVisible(show_ghostscript_action)
+        self.ghostscript_button.setEnabled(show_ghostscript_action and not self._setup_active())
 
     def choose_report_path(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
@@ -501,3 +539,28 @@ class SystemCheckDialog(QDialog):
             event.ignore()
             return
         super().closeEvent(event)
+
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        ui_geometry.clamp_widget_to_available_screen(self)
+
+    def open_ghostscript_download_page(self) -> None:
+        answer = QMessageBox.question(
+            self,
+            "Open Ghostscript download page?",
+            "Ghostscript is optional. Standard searchable PDF works without it.\n\n"
+            "Ghostscript is only needed for PDF/A and advanced OCRmyPDF post-processing.\n\n"
+            "Open the official Ghostscript releases page in your browser now?\n"
+            "After installation, click Refresh to recheck.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        if not QDesktopServices.openUrl(QUrl(GHOSTSCRIPT_RELEASES_URL)):
+            QMessageBox.warning(
+                self,
+                "Unable to open browser",
+                "The Ghostscript download page could not be opened. "
+                f"Please open it manually: {GHOSTSCRIPT_RELEASES_URL}",
+            )
