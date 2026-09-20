@@ -196,7 +196,26 @@ def test_ghostscript_missing_executable(monkeypatch) -> None:
     result = check_ghostscript()
 
     assert not result.available
-    assert result.error == "Executable not found"
+    assert result.error is None
+    assert "Optional — not installed" in result.details[0]
+
+
+def test_diagnostic_report_marks_missing_ghostscript_optional() -> None:
+    report = SystemDiagnostics(
+        application_version="0.1.0a0",
+        operating_system="Windows",
+        operating_system_version="11",
+        architecture="x86_64",
+        python_version="3.12",
+        pyside_version="6.9",
+        components=(
+            ComponentStatus("ghostscript", "Ghostscript", False, details=("Optional — not installed",)),
+        ),
+    )
+
+    text = report.to_text()
+
+    assert "Ghostscript: Optional — not installed" in text
 
 
 def test_ghostscript_diagnostics_on_macos_uses_source_label(monkeypatch) -> None:

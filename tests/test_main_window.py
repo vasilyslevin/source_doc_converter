@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, QRect, Qt
+from PySide6.QtWidgets import QScrollArea
 
 from source_doc_converter.main_window import MainWindow
 
@@ -123,3 +124,37 @@ def test_file_started_selects_item_without_continuous_scroll_hijack(qtbot, tmp_p
     scrollbar.setValue(0)
     window._set_activity("Manual review")
     assert scrollbar.value() == 0
+
+
+def test_initial_window_geometry_is_clamped_to_available_screen(monkeypatch, qtbot) -> None:
+    monkeypatch.setattr(
+        "source_doc_converter.ui_geometry.available_geometry_for_widget",
+        lambda _: QRect(50, 50, 700, 520),
+    )
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+    qtbot.wait(10)
+
+    assert QRect(50, 50, 700, 520).contains(window.geometry())
+    assert window.width() <= 700
+    assert window.height() <= 520
+
+
+def test_bottom_controls_remain_reachable_when_height_is_constrained(monkeypatch, qtbot) -> None:
+    monkeypatch.setattr(
+        "source_doc_converter.ui_geometry.available_geometry_for_widget",
+        lambda _: QRect(0, 0, 1024, 520),
+    )
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+    qtbot.wait(10)
+
+    assert isinstance(window.centralWidget(), QScrollArea)
+    scroll_area = window.centralWidget()
+    scrollbar = scroll_area.verticalScrollBar()
+    assert scrollbar.maximum() >= 0
+    scrollbar.setValue(scrollbar.maximum())
+    button_top = window.process_button.mapTo(scroll_area.viewport(), QPoint(0, 0)).y()
+    assert button_top + window.process_button.height() <= scroll_area.viewport().height()

@@ -1,10 +1,11 @@
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtGui import QDragEnterEvent, QDropEvent
+from PySide6.QtCore import QSize, Qt, QThread, Signal
+from PySide6.QtGui import QDragEnterEvent, QDropEvent, QShowEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QFileDialog,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -14,10 +15,12 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
+from source_doc_converter import ui_geometry
 from source_doc_converter.ocr_pipeline import find_ocrmypdf
 from source_doc_converter.ocr_worker import ProcessingWorker
 
@@ -70,7 +73,6 @@ class MainWindow(QMainWindow):
         self._worker: ProcessingWorker | None = None
 
         self.setWindowTitle("Source Document Converter")
-        self.resize(760, 680)
 
         self.drop_area = PdfDropArea()
         self.drop_area.paths_dropped.connect(self.add_paths)
@@ -150,10 +152,19 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.activity_label)
         layout.addLayout(action_row)
 
-        container = QWidget()
-        container.setLayout(layout)
-        self.setCentralWidget(container)
+        content = QWidget()
+        content.setLayout(layout)
+        self.content_scroll = QScrollArea()
+        self.content_scroll.setWidgetResizable(True)
+        self.content_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.content_scroll.setWidget(content)
+        self.setCentralWidget(self.content_scroll)
         self.statusBar().showMessage("Add one or more PDF files")
+        ui_geometry.apply_initial_geometry(self, QSize(760, 680))
+
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        ui_geometry.clamp_widget_to_available_screen(self)
 
     @property
     def pdf_paths(self) -> tuple[Path, ...]:
