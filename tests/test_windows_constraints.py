@@ -1,3 +1,5 @@
+import subprocess
+import textwrap
 from pathlib import Path, PureWindowsPath
 
 ROOT = Path(__file__).parents[1]
@@ -238,6 +240,80 @@ def test_windows_build_uses_structural_torch_lib_discovery() -> None:
     assert "Resolve-DistributionPath -DistributionRoot $DistributionRoot" in build_script
     assert "Discovered candidate torch lib directories under distribution:" in build_script
     assert "Relevant torch DLL files discovered under distribution:" in build_script
+
+
+def test_windows_build_helpers_are_callable_after_invoke_package_build_returns() -> None:
+    build_script_path = ROOT / "packaging" / "windows" / "build.ps1"
+    helper_scope_check = textwrap.dedent(
+        f"""
+        $ErrorActionPreference = "Stop"
+        $BuildScriptPath = "{build_script_path.as_posix()}"
+        $BuildScript = Get-Content -LiteralPath $BuildScriptPath -Raw
+        $Tokens = $null
+        $ParseErrors = $null
+        $Ast = [System.Management.Automation.Language.Parser]::ParseInput($BuildScript, [ref]$Tokens, [ref]$ParseErrors)
+        if ($ParseErrors.Count -ne 0) {{
+            throw "Could not parse build.ps1"
+        }}
+        $RequiredFunctions = @(
+            "Invoke-PackageBuild",
+            "Resolve-DistributionPath",
+            "Get-DistributionRelativePath",
+            "Read-PeMachine"
+        )
+        $FunctionDefinitions = foreach ($FunctionName in $RequiredFunctions) {{
+            $Match = $Ast.FindAll({{
+                param($Node)
+                $Node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+                $Node.Name -eq $FunctionName
+            }}, $true) | Select-Object -First 1
+            if ($null -eq $Match) {{
+                throw "Missing function definition: $FunctionName"
+            }}
+            $Match.Extent.Text
+        }}
+        foreach ($Definition in $FunctionDefinitions) {{
+            Invoke-Expression $Definition
+        }}
+        $TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Path $TempRoot -Force | Out-Null
+        try {{
+            $WorkDirectory = Join-Path $TempRoot "work"
+            New-Item -ItemType Directory -Path $WorkDirectory -Force | Out-Null
+            $Python = "python"
+            $CommonArguments = @("-c", "import sys; sys.exit(0)")
+            Invoke-PackageBuild -Name "scope-test" -EntryPoint "entry.py" -ConsoleMode "--console"
+
+            $CandidatePath = $TempRoot
+            $Resolved = Resolve-DistributionPath -DistributionRoot $TempRoot -CandidatePath $CandidatePath
+            if ($null -eq $Resolved) {{
+                throw "Resolve-DistributionPath was not callable after Invoke-PackageBuild returned."
+            }}
+            $Relative = Get-DistributionRelativePath -DistributionRoot $TempRoot -ResolvedPath $Resolved
+            if ($Relative -ne ".") {{
+                throw "Get-DistributionRelativePath produced unexpected output: $Relative"
+            }}
+            $ReadPeRaised = $false
+            try {{
+                Read-PeMachine -Path (Join-Path $TempRoot "missing.dll") | Out-Null
+            }} catch {{
+                $ReadPeRaised = $true
+            }}
+            if (-not $ReadPeRaised) {{
+                throw "Read-PeMachine unexpectedly succeeded for missing file."
+            }}
+        }} finally {{
+            Remove-Item -LiteralPath $TempRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }}
+        """
+    ).strip()
+
+    subprocess.run(
+        ["pwsh", "-NoLogo", "-NoProfile", "-Command", helper_scope_check],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
 
 def test_windows_workflow_smokes_lite_distribution_independently() -> None:
