@@ -1,3 +1,5 @@
+import subprocess
+import textwrap
 from pathlib import Path, PureWindowsPath
 
 ROOT = Path(__file__).parents[1]
@@ -99,6 +101,23 @@ def _is_packaged_torchvision_extension(path: str, distribution: str) -> bool:
     )
 
 
+def _is_packaged_torch_lib_directory(path: str, distribution: str) -> bool:
+    normalized_path = path.replace("/", "\\").rstrip("\\")
+    normalized_distribution = distribution.replace("/", "\\").rstrip("\\") + "\\"
+    candidate = PureWindowsPath(normalized_path)
+    return (
+        candidate.name.lower() == "lib"
+        and candidate.parent.name.lower() == "torch"
+        and (normalized_path + "\\").lower().startswith(normalized_distribution.lower())
+    )
+
+
+def _torch_lib_diagnostics(candidates: list[str]) -> list[str]:
+    if not candidates:
+        return [" - (none)"]
+    return [f" - <bundle>\\{candidate}" for candidate in sorted(candidates)]
+
+
 def test_windows_torchvision_extension_detector_accepts_windows_paths() -> None:
     distribution = r"D:\a\repo\build\windows\dist\SourceDocumentConverter"
 
@@ -118,6 +137,39 @@ def test_windows_torchvision_extension_detector_accepts_windows_paths() -> None:
         r"D:\a\repo\venv\Lib\site-packages\torchvision\_C.pyd",
         distribution,
     )
+
+
+def test_windows_torch_lib_detector_accepts_root_and_internal_paths() -> None:
+    distribution = r"D:\a\repo\build\windows\dist\SourceDocumentConverter"
+
+    assert _is_packaged_torch_lib_directory(
+        r"D:\a\repo\build\windows\dist\SourceDocumentConverter\torch\lib", distribution
+    )
+    assert _is_packaged_torch_lib_directory(
+        r"D:\a\repo\build\windows\dist\SourceDocumentConverter\_internal\torch\lib",
+        distribution,
+    )
+    assert _is_packaged_torch_lib_directory(
+        "D:/a/repo/build/windows/dist/SourceDocumentConverter/_internal/torch/lib",
+        distribution,
+    )
+
+
+def test_windows_torch_lib_detector_rejects_outside_distribution() -> None:
+    distribution = r"D:\a\repo\build\windows\dist\SourceDocumentConverter"
+
+    assert not _is_packaged_torch_lib_directory(
+        r"D:\a\repo\build\windows\dist\SourceDocumentConverterElse\torch\lib",
+        distribution,
+    )
+    assert not _is_packaged_torch_lib_directory(
+        r"D:\a\repo\venv\Lib\site-packages\torch\lib",
+        distribution,
+    )
+
+
+def test_windows_torch_lib_zero_candidate_diagnostics() -> None:
+    assert _torch_lib_diagnostics([]) == [" - (none)"]
 
 
 def test_windows_build_preserves_tesseract_installer_cache_outside_output_cleanup() -> None:
@@ -176,6 +228,92 @@ def test_windows_build_uses_path_safe_torchvision_extension_check() -> None:
     assert ".StartsWith(" in build_script
     assert "Expected packaged torchvision extension locations:" in build_script
     assert "Discovered _C*.pyd candidates under distribution:" in build_script
+
+
+def test_windows_build_uses_structural_torch_lib_discovery() -> None:
+    build_script = (ROOT / "packaging" / "windows" / "build.ps1").read_text(encoding="utf-8")
+
+    assert '$TorchDllGlob = Join-Path $TorchLibDirectory "*.dll"' in build_script
+    assert "--add-binary=$TorchDllGlob;torch/lib" in build_script
+    assert '$_.Name.Equals("lib"' in build_script
+    assert '$_.Parent.Name.Equals("torch"' in build_script
+    assert "Resolve-DistributionPath -DistributionRoot $DistributionRoot" in build_script
+    assert "Discovered candidate torch lib directories under distribution:" in build_script
+    assert "Relevant torch DLL files discovered under distribution:" in build_script
+
+
+def test_windows_build_helpers_are_callable_after_invoke_package_build_returns() -> None:
+    build_script_path = ROOT / "packaging" / "windows" / "build.ps1"
+    helper_scope_check = textwrap.dedent(
+        f"""
+        $ErrorActionPreference = "Stop"
+        $BuildScriptPath = "{build_script_path.as_posix()}"
+        $BuildScript = Get-Content -LiteralPath $BuildScriptPath -Raw
+        $Tokens = $null
+        $ParseErrors = $null
+        $Ast = [System.Management.Automation.Language.Parser]::ParseInput($BuildScript, [ref]$Tokens, [ref]$ParseErrors)
+        if ($ParseErrors.Count -ne 0) {{
+            throw "Could not parse build.ps1"
+        }}
+        $RequiredFunctions = @(
+            "Invoke-PackageBuild",
+            "Resolve-DistributionPath",
+            "Get-DistributionRelativePath",
+            "Read-PeMachine"
+        )
+        $FunctionDefinitions = foreach ($FunctionName in $RequiredFunctions) {{
+            $Match = $Ast.FindAll({{
+                param($Node)
+                $Node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+                $Node.Name -eq $FunctionName
+            }}, $true) | Select-Object -First 1
+            if ($null -eq $Match) {{
+                throw "Missing function definition: $FunctionName"
+            }}
+            $Match.Extent.Text
+        }}
+        foreach ($Definition in $FunctionDefinitions) {{
+            Invoke-Expression $Definition
+        }}
+        $TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Path $TempRoot -Force | Out-Null
+        try {{
+            $WorkDirectory = Join-Path $TempRoot "work"
+            New-Item -ItemType Directory -Path $WorkDirectory -Force | Out-Null
+            $Python = "python"
+            $CommonArguments = @("-c", "import sys; sys.exit(0)")
+            Invoke-PackageBuild -Name "scope-test" -EntryPoint "entry.py" -ConsoleMode "--console"
+
+            $CandidatePath = $TempRoot
+            $Resolved = Resolve-DistributionPath -DistributionRoot $TempRoot -CandidatePath $CandidatePath
+            if ($null -eq $Resolved) {{
+                throw "Resolve-DistributionPath was not callable after Invoke-PackageBuild returned."
+            }}
+            $Relative = Get-DistributionRelativePath -DistributionRoot $TempRoot -ResolvedPath $Resolved
+            if ($Relative -ne ".") {{
+                throw "Get-DistributionRelativePath produced unexpected output: $Relative"
+            }}
+            $ReadPeRaised = $false
+            try {{
+                Read-PeMachine -Path (Join-Path $TempRoot "missing.dll") | Out-Null
+            }} catch {{
+                $ReadPeRaised = $true
+            }}
+            if (-not $ReadPeRaised) {{
+                throw "Read-PeMachine unexpectedly succeeded for missing file."
+            }}
+        }} finally {{
+            Remove-Item -LiteralPath $TempRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }}
+        """
+    ).strip()
+
+    subprocess.run(
+        ["pwsh", "-NoLogo", "-NoProfile", "-Command", helper_scope_check],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
 
 def test_windows_workflow_smokes_lite_distribution_independently() -> None:

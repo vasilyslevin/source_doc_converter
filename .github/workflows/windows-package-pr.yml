@@ -1,0 +1,132 @@
+name: Windows package PR validation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "packaging/windows/**"
+      - "src/source_doc_converter/docling_tools_entry.py"
+      - ".github/workflows/windows-package.yml"
+      - ".github/workflows/windows-package-pr.yml"
+      - "tests/test_windows_constraints.py"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-validation:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Read Tesseract lock metadata
+        shell: pwsh
+        run: |
+          $Lock = Get-Content "packaging/windows/tesseract-bundle.lock.json" -Raw | ConvertFrom-Json
+          $InstallerName = [System.IO.Path]::GetFileName("$($Lock.download_url)")
+          "TESSERACT_LOCK_VERSION=$($Lock.version)" | Out-File $env:GITHUB_ENV -Append
+          "TESSERACT_LOCK_SHA256=$($Lock.sha256.ToLowerInvariant())" | Out-File $env:GITHUB_ENV -Append
+          "TESSERACT_INSTALLER_NAME=$InstallerName" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Create Tesseract cache directory
+        shell: pwsh
+        run: New-Item -ItemType Directory -Path "build/tesseract-cache" -Force | Out-Null
+
+      - name: Cache pinned Tesseract installer
+        uses: actions/cache@v4
+        with:
+          path: build/tesseract-cache/${{ env.TESSERACT_INSTALLER_NAME }}
+          key: windows-tesseract-installer-${{ runner.os }}-${{ env.TESSERACT_LOCK_VERSION }}-${{ env.TESSERACT_LOCK_SHA256 }}
+
+      - name: Install application and build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[full,dev]"
+          python -m pip install -r packaging/windows/requirements-build.txt
+
+      - name: Build standalone folder (Full)
+        shell: pwsh
+        run: ./packaging/windows/build.ps1 -InstallerCacheDirectory build/tesseract-cache
+
+      - name: Locate Full distribution
+        shell: pwsh
+        run: |
+          $Distribution = Join-Path $PWD "build\windows\dist\SourceDocumentConverter"
+          if (-not (Test-Path $Distribution -PathType Container)) {
+            throw "PyInstaller distribution directory was not produced."
+          }
+          "DIST_DIR_FULL=$Distribution" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Smoke test packaged executables (Full)
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+          DO_NOT_TRACK: "1"
+        run: |
+          $GuiPath = Join-Path $env:DIST_DIR_FULL "SourceDocumentConverter.exe"
+          $GuiProcess = Start-Process -FilePath $GuiPath -ArgumentList "--package-smoke-test" -Wait -PassThru
+          if ($GuiProcess.ExitCode -ne 0) {
+            throw "GUI package smoke test failed with exit code $($GuiProcess.ExitCode)."
+          }
+          & (Join-Path $env:DIST_DIR_FULL "docling-tools.exe") --runtime-check
+          if ($LASTEXITCODE -ne 0) {
+            throw "Docling runtime check failed with exit code $LASTEXITCODE."
+          }
+          & (Join-Path $env:DIST_DIR_FULL "ocrmypdf.exe") --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "OCRmyPDF companion failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Build standalone folder (Lite)
+        shell: pwsh
+        run: ./packaging/windows/build.ps1 -PackageFlavor Lite -OutputDirectory build/windows-lite
+
+      - name: Locate Lite distribution
+        shell: pwsh
+        run: |
+          $Distribution = Join-Path $PWD "build\windows-lite\dist\SourceDocumentConverter"
+          if (-not (Test-Path $Distribution -PathType Container)) {
+            throw "Lite PyInstaller distribution directory was not produced."
+          }
+          "DIST_DIR_LITE=$Distribution" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Verify Lite package contents
+        shell: pwsh
+        run: |
+          if (Test-Path (Join-Path $env:DIST_DIR_LITE "ocrmypdf.exe") -PathType Leaf) {
+            throw "Lite package unexpectedly contains ocrmypdf.exe."
+          }
+          if (Test-Path (Join-Path $env:DIST_DIR_LITE "tools\\tesseract\\tesseract.exe") -PathType Leaf) {
+            throw "Lite package unexpectedly contains bundled Tesseract."
+          }
+
+      - name: Smoke test packaged executables (Lite)
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+          DO_NOT_TRACK: "1"
+        run: |
+          $GuiPathLite = Join-Path $env:DIST_DIR_LITE "SourceDocumentConverter.exe"
+          $GuiProcessLite = Start-Process -FilePath $GuiPathLite -ArgumentList "--package-smoke-test" -Wait -PassThru
+          if ($GuiProcessLite.ExitCode -ne 0) {
+            throw "Lite GUI package smoke test failed with exit code $($GuiProcessLite.ExitCode)."
+          }
+          & (Join-Path $env:DIST_DIR_LITE "docling-tools.exe") --runtime-check
+          if ($LASTEXITCODE -ne 0) {
+            throw "Lite docling runtime check failed with exit code $LASTEXITCODE."
+          }

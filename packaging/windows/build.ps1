@@ -131,6 +131,7 @@ $TorchvisionInfo = $TorchvisionInfoJson | ConvertFrom-Json
 $TorchvisionExtension = [string]$TorchvisionInfo.torchvision_extension
 $TorchvisionRoot = [string]$TorchvisionInfo.torchvision_root
 $TorchLibDirectory = [string]$TorchvisionInfo.torch_lib_dir
+$TorchDllGlob = Join-Path $TorchLibDirectory "*.dll"
 if (-not (Test-Path $TorchvisionExtension -PathType Leaf)) {
     throw "Could not locate the installed torchvision native extension."
 }
@@ -193,7 +194,7 @@ $DoclingArguments = @(
     "--collect-binaries=torch",
     "--collect-binaries=torchvision",
     "--add-binary=$TorchvisionExtension;torchvision",
-    "--add-binary=$TorchLibDirectory\\*.dll;torch\\lib",
+    "--add-binary=$TorchDllGlob;torch/lib",
     "--add-data=$TorchvisionRoot\\_meta_registrations.py;torchvision",
     "--runtime-hook=$TorchvisionRuntimeHook",
     "--hidden-import=docling.cli.tools",
@@ -227,6 +228,74 @@ function Invoke-PackageBuild {
     & $Python @Arguments
     if ($LASTEXITCODE -ne 0) {
         throw "PyInstaller failed for $Name with exit code $LASTEXITCODE."
+    }
+}
+
+function Resolve-DistributionPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DistributionRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$CandidatePath
+    )
+
+    $NormalizedRoot = [System.IO.Path]::GetFullPath($DistributionRoot).TrimEnd("\", "/")
+    $NormalizedCandidate = [System.IO.Path]::GetFullPath($CandidatePath).TrimEnd("\", "/")
+    $Prefix = "$NormalizedRoot\"
+    if (
+        $NormalizedCandidate.Equals($NormalizedRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+        $NormalizedCandidate.StartsWith($Prefix, [System.StringComparison]::OrdinalIgnoreCase)
+    ) {
+        return $NormalizedCandidate
+    }
+    return $null
+}
+
+function Get-DistributionRelativePath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DistributionRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$ResolvedPath
+    )
+
+    $NormalizedRoot = [System.IO.Path]::GetFullPath($DistributionRoot).TrimEnd("\", "/")
+    $NormalizedPath = [System.IO.Path]::GetFullPath($ResolvedPath).TrimEnd("\", "/")
+    if ($NormalizedPath.Equals($NormalizedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return "."
+    }
+    return $NormalizedPath.Substring($NormalizedRoot.Length + 1)
+}
+
+function Read-PeMachine {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $Stream = [System.IO.File]::OpenRead($Path)
+    try {
+        if ($Stream.Length -lt 64) {
+            throw "Not a PE file: $Path"
+        }
+        $Reader = [System.IO.BinaryReader]::new($Stream)
+        $DosSignature = $Reader.ReadUInt16()
+        if ($DosSignature -ne 0x5A4D) {
+            throw "Not a PE file: $Path"
+        }
+        $Stream.Position = 0x3C
+        $PeOffset = $Reader.ReadUInt32()
+        if ($Stream.Length -lt ($PeOffset + 6)) {
+            throw "Invalid PE header offset: $Path"
+        }
+        $Stream.Position = $PeOffset
+        $PeSignature = $Reader.ReadUInt32()
+        if ($PeSignature -ne 0x00004550) {
+            throw "Invalid PE header signature: $Path"
+        }
+        return $Reader.ReadUInt16()
+    } finally {
+        $Stream.Dispose()
     }
 }
 
@@ -291,15 +360,77 @@ try {
         throw "Packaged torchvision native extension _C.pyd was not found."
     }
 
-    $PackagedTorchLibDirectory = @(
-        Join-Path $Distribution "torch\\lib",
-        Join-Path $Distribution "_internal\\torch\\lib"
-    ) | Where-Object { Test-Path $_ -PathType Container } | Select-Object -First 1
-    if (-not $PackagedTorchLibDirectory) {
-        throw "Packaged torch DLL directory was not found in torch\\lib or _internal\\torch\\lib."
+    $PackagedTorchLibCandidates = @(
+        Get-ChildItem -Path $DistributionRoot -Directory -Recurse | Where-Object {
+            $_.Name.Equals("lib", [System.StringComparison]::OrdinalIgnoreCase) -and
+            $_.Parent -and
+            $_.Parent.Name.Equals("torch", [System.StringComparison]::OrdinalIgnoreCase)
+        } | ForEach-Object {
+            $ResolvedCandidate = Resolve-DistributionPath -DistributionRoot $DistributionRoot -CandidatePath $_.FullName
+            if ($null -eq $ResolvedCandidate) {
+                return
+            }
+            $CandidateDlls = @(Get-ChildItem -Path $ResolvedCandidate -Filter "*.dll" -File)
+            [PSCustomObject]@{
+                resolved_path = $ResolvedCandidate
+                relative_path = Get-DistributionRelativePath -DistributionRoot $DistributionRoot -ResolvedPath $ResolvedCandidate
+                dlls          = $CandidateDlls
+            }
+        }
+    )
+    $PackagedTorchLibDirectories = @($PackagedTorchLibCandidates | Where-Object { $_.dlls.Count -gt 0 })
+    if ($PackagedTorchLibDirectories.Count -eq 0) {
+        Write-Host "Discovered candidate torch lib directories under distribution:"
+        if ($PackagedTorchLibCandidates.Count -eq 0) {
+            Write-Host " - (none)"
+        } else {
+            foreach ($Candidate in $PackagedTorchLibCandidates | Sort-Object relative_path) {
+                $DllNames = @($Candidate.dlls | ForEach-Object { $_.Name } | Sort-Object -Unique)
+                if ($DllNames.Count -eq 0) {
+                    Write-Host " - <bundle>\$($Candidate.relative_path) (no DLL files)"
+                } else {
+                    Write-Host " - <bundle>\$($Candidate.relative_path): $($DllNames -join ', ')"
+                }
+            }
+        }
+        $TorchDllsInDistribution = @(
+            Get-ChildItem -Path $DistributionRoot -Filter "*.dll" -File -Recurse | ForEach-Object {
+                $ResolvedPath = Resolve-DistributionPath -DistributionRoot $DistributionRoot -CandidatePath $_.FullName
+                if ($null -eq $ResolvedPath) {
+                    return
+                }
+                if ($ResolvedPath -match '(?i)[\\/]torch[\\/]') {
+                    Get-DistributionRelativePath -DistributionRoot $DistributionRoot -ResolvedPath $ResolvedPath
+                }
+            }
+        ) | Sort-Object -Unique
+        Write-Host "Relevant torch DLL files discovered under distribution:"
+        if ($TorchDllsInDistribution.Count -eq 0) {
+            Write-Host " - (none)"
+        } else {
+            foreach ($RelativeDll in $TorchDllsInDistribution) {
+                Write-Host " - <bundle>\$RelativeDll"
+            }
+        }
+        throw "Packaged torch DLL directory was not found under this distribution."
     }
-    if ((Get-ChildItem -Path $PackagedTorchLibDirectory -Filter "*.dll" -File).Count -eq 0) {
-        throw "Packaged torch DLL directory does not contain DLL files."
+    $PackagedTorchLibDirectory = ($PackagedTorchLibDirectories | Sort-Object relative_path | Select-Object -First 1)
+    $PackagedTorchDlls = @($PackagedTorchLibDirectory.dlls)
+    $RequiredTorchDllNames = @("c10.dll", "torch_cpu.dll") | Where-Object {
+        Test-Path (Join-Path $TorchLibDirectory $_) -PathType Leaf
+    }
+    foreach ($RequiredDll in $RequiredTorchDllNames) {
+        if (-not ($PackagedTorchDlls | Where-Object { $_.Name.Equals($RequiredDll, [System.StringComparison]::OrdinalIgnoreCase) })) {
+            $DiscoveredDllNames = @($PackagedTorchDlls | ForEach-Object { $_.Name } | Sort-Object -Unique)
+            throw "Packaged torch DLL '$RequiredDll' was not found in <bundle>\$($PackagedTorchLibDirectory.relative_path). Discovered: $($DiscoveredDllNames -join ', ')"
+        }
+    }
+    foreach ($Dll in $PackagedTorchDlls) {
+        $Machine = Read-PeMachine -Path $Dll.FullName
+        if ($Machine -ne 0x8664) {
+            $RelativeDll = Get-DistributionRelativePath -DistributionRoot $DistributionRoot -ResolvedPath $Dll.FullName
+            throw "Packaged torch DLL has unexpected architecture (machine 0x{0:X4}): <bundle>\{1}" -f $Machine, $RelativeDll
+        }
     }
 
     & (Join-Path $Distribution "docling-tools.exe") --runtime-check
