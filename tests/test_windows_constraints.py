@@ -99,6 +99,23 @@ def _is_packaged_torchvision_extension(path: str, distribution: str) -> bool:
     )
 
 
+def _is_packaged_torch_lib_directory(path: str, distribution: str) -> bool:
+    normalized_path = path.replace("/", "\\").rstrip("\\")
+    normalized_distribution = distribution.replace("/", "\\").rstrip("\\") + "\\"
+    candidate = PureWindowsPath(normalized_path)
+    return (
+        candidate.name.lower() == "lib"
+        and candidate.parent.name.lower() == "torch"
+        and (normalized_path + "\\").lower().startswith(normalized_distribution.lower())
+    )
+
+
+def _torch_lib_diagnostics(candidates: list[str]) -> list[str]:
+    if not candidates:
+        return [" - (none)"]
+    return [f" - <bundle>\\{candidate}" for candidate in sorted(candidates)]
+
+
 def test_windows_torchvision_extension_detector_accepts_windows_paths() -> None:
     distribution = r"D:\a\repo\build\windows\dist\SourceDocumentConverter"
 
@@ -118,6 +135,39 @@ def test_windows_torchvision_extension_detector_accepts_windows_paths() -> None:
         r"D:\a\repo\venv\Lib\site-packages\torchvision\_C.pyd",
         distribution,
     )
+
+
+def test_windows_torch_lib_detector_accepts_root_and_internal_paths() -> None:
+    distribution = r"D:\a\repo\build\windows\dist\SourceDocumentConverter"
+
+    assert _is_packaged_torch_lib_directory(
+        r"D:\a\repo\build\windows\dist\SourceDocumentConverter\torch\lib", distribution
+    )
+    assert _is_packaged_torch_lib_directory(
+        r"D:\a\repo\build\windows\dist\SourceDocumentConverter\_internal\torch\lib",
+        distribution,
+    )
+    assert _is_packaged_torch_lib_directory(
+        "D:/a/repo/build/windows/dist/SourceDocumentConverter/_internal/torch/lib",
+        distribution,
+    )
+
+
+def test_windows_torch_lib_detector_rejects_outside_distribution() -> None:
+    distribution = r"D:\a\repo\build\windows\dist\SourceDocumentConverter"
+
+    assert not _is_packaged_torch_lib_directory(
+        r"D:\a\repo\build\windows\dist\SourceDocumentConverterElse\torch\lib",
+        distribution,
+    )
+    assert not _is_packaged_torch_lib_directory(
+        r"D:\a\repo\venv\Lib\site-packages\torch\lib",
+        distribution,
+    )
+
+
+def test_windows_torch_lib_zero_candidate_diagnostics() -> None:
+    assert _torch_lib_diagnostics([]) == [" - (none)"]
 
 
 def test_windows_build_preserves_tesseract_installer_cache_outside_output_cleanup() -> None:
@@ -176,6 +226,18 @@ def test_windows_build_uses_path_safe_torchvision_extension_check() -> None:
     assert ".StartsWith(" in build_script
     assert "Expected packaged torchvision extension locations:" in build_script
     assert "Discovered _C*.pyd candidates under distribution:" in build_script
+
+
+def test_windows_build_uses_structural_torch_lib_discovery() -> None:
+    build_script = (ROOT / "packaging" / "windows" / "build.ps1").read_text(encoding="utf-8")
+
+    assert '$TorchDllGlob = Join-Path $TorchLibDirectory "*.dll"' in build_script
+    assert "--add-binary=$TorchDllGlob;torch/lib" in build_script
+    assert '$_.Name.Equals("lib"' in build_script
+    assert '$_.Parent.Name.Equals("torch"' in build_script
+    assert "Resolve-DistributionPath -DistributionRoot $DistributionRoot" in build_script
+    assert "Discovered candidate torch lib directories under distribution:" in build_script
+    assert "Relevant torch DLL files discovered under distribution:" in build_script
 
 
 def test_windows_workflow_smokes_lite_distribution_independently() -> None:
