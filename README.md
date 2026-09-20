@@ -161,7 +161,7 @@ These controls reduce unintended network access but are not a substitute for ope
 7. Select **Process Documents**.
 8. Use **Open Output Folder** after processing completes.
 
-Unavailable output formats are disabled automatically. Searchable PDF depends on OCRmyPDF, Tesseract, and Ghostscript (Windows Full bundles OCRmyPDF + Tesseract but still requires external Ghostscript; Windows Lite/macOS/source installs use external OCR tools). Markdown and JSON require both Docling and completed local model setup.
+Unavailable output formats are disabled automatically. Searchable PDF depends on OCRmyPDF and Tesseract (Ghostscript is optional/recommended for PDF/A and advanced post-processing; Windows Full bundles OCRmyPDF + Tesseract while Windows Lite/macOS/source installs use external OCR tools). Markdown and JSON require both Docling and completed local model setup.
 
 ## Output files
 
@@ -251,7 +251,7 @@ GitHub Actions for `source_doc_converter` runs both commands on Ubuntu, Windows,
 
 ## Packaging direction
 
-The Windows packaging workflow builds separate Full and Lite artifacts: Full bundles the app runtime, Docling tools, OCRmyPDF companion, and pinned Tesseract runtime (Ghostscript remains external and is installed via guided setup when missing), while Lite keeps OCR tools external with guided setup.
+The Windows packaging workflow builds separate Full and Lite artifacts: Full bundles the app runtime, Docling tools, OCRmyPDF companion, and pinned Tesseract runtime (Ghostscript remains optional/manual for features that require it), while Lite keeps OCR tools external with guided setup.
 
 Before publishing a release, manually run the **Windows development package** workflow for the release tag and confirm the package succeeds.
 

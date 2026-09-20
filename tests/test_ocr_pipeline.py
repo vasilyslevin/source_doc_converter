@@ -1,3 +1,4 @@
+import builtins
 from contextlib import nullcontext
 from pathlib import Path
 
@@ -291,6 +292,27 @@ def test_fast_mode_without_pypdf_reports_actionable_error(monkeypatch, tmp_path:
             export_json=False,
             analysis_mode="fast",
         )
+
+
+def test_fast_markdown_import_error_includes_sanitized_diagnostics(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "fast.pdf"
+    source.write_bytes(b"%PDF-1.4\n")
+    original_import = builtins.__import__
+    home = str(Path.home())
+
+    def fake_import(name, *args, **kwargs):
+        if name == "pypdf":
+            raise ImportError(f"No module named 'pypdf' in {home}")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    with pytest.raises(OcrError) as error:
+        ocr_pipeline._fast_markdown_export(source)
+
+    message = str(error.value)
+    assert "Import diagnostics: ImportError:" in message
+    assert home not in message
 
 
 def test_ocr_timing_contains_preflight_and_validation(monkeypatch, tmp_path: Path) -> None:

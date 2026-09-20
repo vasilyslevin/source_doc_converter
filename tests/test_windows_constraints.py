@@ -1,4 +1,4 @@
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 ROOT = Path(__file__).parents[1]
 CONSTRAINTS = ROOT / "packaging" / "windows" / "constraints-windows.txt"
@@ -87,6 +87,39 @@ def test_windows_build_hashes_full_tesseract_payload() -> None:
     assert "$HashTargets = $HashTargets | Sort-Object -Unique" in build_script
 
 
+def _is_packaged_torchvision_extension(path: str, distribution: str) -> bool:
+    normalized_path = path.replace("/", "\\")
+    normalized_distribution = distribution.replace("/", "\\").rstrip("\\") + "\\"
+    candidate = PureWindowsPath(normalized_path)
+    return (
+        candidate.name.lower().startswith("_c")
+        and candidate.suffix.lower() == ".pyd"
+        and candidate.parent.name.lower() == "torchvision"
+        and normalized_path.lower().startswith(normalized_distribution.lower())
+    )
+
+
+def test_windows_torchvision_extension_detector_accepts_windows_paths() -> None:
+    distribution = r"D:\a\repo\build\windows\dist\SourceDocumentConverter"
+
+    assert _is_packaged_torchvision_extension(
+        r"D:\a\repo\build\windows\dist\SourceDocumentConverter\_internal\torchvision\_C.pyd",
+        distribution,
+    )
+    assert _is_packaged_torchvision_extension(
+        r"D:\a\repo\build\windows\dist\SourceDocumentConverter\_internal\torchvision\_C_stable.pyd",
+        distribution,
+    )
+    assert _is_packaged_torchvision_extension(
+        "D:/a/repo/build/windows/dist/SourceDocumentConverter/_internal/torchvision/_C_stable.pyd",
+        distribution,
+    )
+    assert not _is_packaged_torchvision_extension(
+        r"D:\a\repo\venv\Lib\site-packages\torchvision\_C.pyd",
+        distribution,
+    )
+
+
 def test_windows_build_preserves_tesseract_installer_cache_outside_output_cleanup() -> None:
     build_script = (ROOT / "packaging" / "windows" / "build.ps1").read_text(encoding="utf-8")
     workflow = WINDOWS_WORKFLOW.read_text(encoding="utf-8")
@@ -122,6 +155,27 @@ def test_windows_build_supports_lite_package() -> None:
     assert "SourceDocumentConverter-Windows-x64-Full" in workflow
     assert "SourceDocumentConverter-Windows-x64-Lite" in workflow
     assert "Install Missing OCR Tools" in notes
+
+
+def test_windows_build_writes_manifest_with_version_flavor_and_commit() -> None:
+    build_script = (ROOT / "packaging" / "windows" / "build.ps1").read_text(encoding="utf-8")
+
+    assert '$BuildManifestName = "build_manifest.json"' in build_script
+    assert "application_version = $AppVersion" in build_script
+    assert "package_flavor      = $PackageFlavor" in build_script
+    assert "source_commit_sha" in build_script
+    assert "$env:GITHUB_SHA" in build_script
+
+
+def test_windows_build_uses_path_safe_torchvision_extension_check() -> None:
+    build_script = (ROOT / "packaging" / "windows" / "build.ps1").read_text(encoding="utf-8")
+
+    assert "$PackagedTorchvisionCandidates = @(Get-ChildItem" in build_script
+    assert "$PackagedTorchvisionExtensions = @(" in build_script
+    assert "$_.Directory.Name -eq \"torchvision\"" in build_script
+    assert ".StartsWith(" in build_script
+    assert "Expected packaged torchvision extension locations:" in build_script
+    assert "Discovered _C*.pyd candidates under distribution:" in build_script
 
 
 def test_windows_workflow_smokes_lite_distribution_independently() -> None:

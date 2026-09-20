@@ -358,8 +358,8 @@ class ApplicationWindow(MainWindow):
         if not availability.searchable_pdf:
             self.searchable_pdf_checkbox.setChecked(False)
             self.searchable_pdf_checkbox.setToolTip(
-                "Searchable PDF requires OCRmyPDF, Tesseract OCR, and Ghostscript. "
-                "Windows Full still requires Ghostscript."
+                "Searchable PDF requires OCRmyPDF and Tesseract OCR. "
+                "Ghostscript is optional/recommended for PDF/A and advanced post-processing."
             )
         else:
             self.searchable_pdf_checkbox.setToolTip("")
@@ -386,7 +386,6 @@ class ApplicationWindow(MainWindow):
     def apply_diagnostics(self, diagnostics: SystemDiagnostics) -> None:
         ocrmypdf = diagnostics.component("ocrmypdf")
         tesseract = diagnostics.component("tesseract")
-        ghostscript = diagnostics.component("ghostscript")
         docling = diagnostics.component("docling")
         model_state = self._model_state_provider()
         reason = None
@@ -399,7 +398,7 @@ class ApplicationWindow(MainWindow):
             )
         self.apply_output_availability(
             OutputAvailability(
-                searchable_pdf=ocrmypdf.available and tesseract.available and ghostscript.available,
+                searchable_pdf=ocrmypdf.available and tesseract.available,
                 docling=docling.available and model_state.ready,
                 docling_reason=reason,
             )

@@ -2,6 +2,7 @@ import multiprocessing
 import os
 import sys
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
@@ -38,7 +39,7 @@ def _prepare_frozen_multiprocessing() -> None:
 
 
 def run_package_smoke_test() -> int:
-    from pypdf import PdfReader
+    from pypdf import PdfReader, PdfWriter
 
     window = ApplicationWindow()
     window.close()
@@ -50,6 +51,15 @@ def run_package_smoke_test() -> int:
                 "Packaged macOS model downloader command is misconfigured; "
                 "expected internal docling-tools dispatch."
             )
+    with TemporaryDirectory(prefix="sdc-package-smoke-") as directory:
+        round_trip = Path(directory) / "pypdf-round-trip.pdf"
+        writer = PdfWriter()
+        writer.add_blank_page(width=72, height=72)
+        with round_trip.open("wb") as handle:
+            writer.write(handle)
+        reader = PdfReader(str(round_trip))
+        if len(reader.pages) != 1:
+            raise RuntimeError("Packaged pypdf smoke test expected a one-page round-trip PDF.")
     _ = PdfReader
     return 0
 

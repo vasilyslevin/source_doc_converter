@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from PySide6 import __version__ as PYSIDE_VERSION
 
 from source_doc_converter import __version__
+from source_doc_converter.build_manifest import load_build_manifest
 from source_doc_converter.model_management import load_model_directory
 from source_doc_converter.ocr_runtime import (
     build_ocr_environment,
@@ -47,6 +48,8 @@ class SystemDiagnostics:
     python_version: str
     pyside_version: str
     components: tuple[ComponentStatus, ...]
+    package_flavor: str | None = None
+    source_commit_sha: str | None = None
 
     def component(self, key: str) -> ComponentStatus:
         for component in self.components:
@@ -58,13 +61,21 @@ class SystemDiagnostics:
         lines = [
             "Source Document Converter - System Check",
             f"Application: {self.application_version}",
+        ]
+        if self.package_flavor:
+            lines.append(f"Package flavor: {self.package_flavor}")
+        if self.source_commit_sha:
+            lines.append(f"Source commit: {self.source_commit_sha}")
+        lines.extend(
+            [
             f"Operating system: {self.operating_system} {self.operating_system_version}",
             f"Architecture: {self.architecture}",
             f"Python: {self.python_version}",
             f"PySide6: {self.pyside_version}",
             "",
             "Components:",
-        ]
+            ]
+        )
         for component in self.components:
             state = "Available" if component.available else "Unavailable"
             version = f" ({component.version})" if component.version else ""
@@ -124,7 +135,6 @@ def _python_package_available(package: str) -> bool:
 def check_output_availability() -> OutputAvailability:
     docling_installed = _python_package_available("docling")
     models_ready = load_model_directory().ready if docling_installed else False
-    ghostscript_ready = resolve_ghostscript_executable() is not None
     reason = None
     if not docling_installed:
         reason = "Docling is not installed. Open Help > System Check for setup guidance."
@@ -132,8 +142,7 @@ def check_output_availability() -> OutputAvailability:
         reason = "Local Docling models are not ready. Open Help > System Check and download models."
     return OutputAvailability(
         searchable_pdf=resolve_ocrmypdf_executable() is not None
-        and resolve_tesseract_executable()[0] is not None
-        and ghostscript_ready,
+        and resolve_tesseract_executable()[0] is not None,
         docling=docling_installed and models_ready,
         docling_reason=reason,
     )
@@ -225,7 +234,7 @@ def check_ghostscript() -> ComponentStatus:
         return ComponentStatus("ghostscript", "Ghostscript", False, error="Executable not found")
 
     succeeded, output, error = _run_command([executable, "--version"])
-    details = ("Required for searchable PDF output.",)
+    details = ("Optional/recommended for PDF/A and advanced OCRmyPDF post-processing.",)
     if platform.system() == "Darwin":
         if any(
             executable == str(prefix) or executable.startswith(f"{prefix!s}/")
@@ -266,7 +275,15 @@ def check_docling() -> ComponentStatus:
 
 
 def check_pypdf() -> ComponentStatus:
-    return check_python_package("pypdf", "pypdf")
+    try:
+        from pypdf import PdfReader
+    except ImportError as error:
+        return ComponentStatus("pypdf", "pypdf", False, error=str(error))
+    try:
+        version = importlib_metadata.version("pypdf")
+    except importlib_metadata.PackageNotFoundError:
+        version = "Installed; version unavailable"
+    return ComponentStatus("pypdf", "pypdf", True, version=version, details=(f"Reader: {PdfReader.__name__}",))
 
 
 def check_homebrew() -> ComponentStatus:
@@ -302,18 +319,27 @@ def installation_guidance(component: str, operating_system: str | None = None) -
         if system == "Darwin":
             return "Install Ghostscript with Homebrew: brew install ghostscript"
         if system == "Windows":
-            return "Install Ghostscript with winget: winget install -e --id ArtifexSoftware.GhostScript"
+            return (
+                "Ghostscript is optional for OCRmyPDF --output-type pdf, but some PDF/A and advanced "
+                "features still require it. Install manually from https://ghostscript.com/releases/."
+            )
         return "Install Ghostscript using your Linux distribution package manager."
     if component == "homebrew" and system == "Darwin":
         return "Install Homebrew first: https://brew.sh/"
     if system == "Darwin":
         return "Install OCR tools with Homebrew: brew install ocrmypdf tesseract ghostscript"
     if system == "Windows":
-        return "Install OCR tools with winget: winget install -e --id OCRmyPDF.OCRmyPDF UB-Mannheim.TesseractOCR ArtifexSoftware.GhostScript"
+        return (
+            "Install OCR tools on Windows: "
+            "winget install -e --id astral-sh.uv; uv tool install ocrmypdf; "
+            "winget install -e --id UB-Mannheim.TesseractOCR. "
+            "Install Ghostscript manually if you need PDF/A or advanced post-processing features."
+        )
     return "Install OCRmyPDF and Tesseract using your Linux distribution package manager."
 
 
 def collect_system_diagnostics() -> SystemDiagnostics:
+    manifest = load_build_manifest(__version__)
     base_components = (
         check_ocrmypdf(),
         check_tesseract(),
@@ -327,7 +353,9 @@ def collect_system_diagnostics() -> SystemDiagnostics:
         else base_components
     )
     return SystemDiagnostics(
-        application_version=__version__,
+        application_version=manifest.application_version,
+        package_flavor=manifest.package_flavor,
+        source_commit_sha=manifest.source_commit_sha,
         operating_system=platform.system(),
         operating_system_version=platform.release(),
         architecture=platform.machine(),

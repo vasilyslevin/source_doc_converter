@@ -10,7 +10,7 @@ Executables:
 Models are not included. Choose a model folder and approve the download through Help > System Check. Document conversion does not automatically download models.
 
 OCRmyPDF and a pinned UB-Mannheim Tesseract runtime are bundled in this Full development build.
-Searchable-PDF output still requires Ghostscript to be installed externally.
-If Ghostscript is missing, open Help > System Check > Install Missing OCR Tools and confirm the winget install step for Ghostscript.
+Ghostscript is optional/recommended for PDF/A and advanced OCRmyPDF post-processing features.
+If Ghostscript is missing, open Help > System Check for safe manual installation guidance.
 
 Verify generated Markdown and JSON against the original PDF before relying on them. The original PDF remains authoritative.

@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -22,6 +23,10 @@ class DependencyInstallStep:
     key: str
     display_name: str
     command: tuple[str, ...]
+
+
+WINDOWS_UV_WINGET_ID = "astral-sh.uv"
+WINDOWS_TESSERACT_WINGET_ID = "UB-Mannheim.TesseractOCR"
 
 
 class DependencySetupWorker(QObject):
@@ -124,8 +129,9 @@ class DependencySetupWorker(QObject):
             process.communicate()
 
     def _run_step(self, step: DependencyInstallStep) -> None:
+        command = _resolve_step_command(step)
         self._process = subprocess.Popen(
-            list(step.command),
+            list(command),
             shell=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -168,30 +174,34 @@ def _default_steps(diagnostics: SystemDiagnostics) -> list[DependencyInstallStep
     if active_system == "Windows":
         if shutil.which("winget") is None:
             return []
-        if "tesseract" in missing:
+        if "tesseract" in missing and _winget_package_available(WINDOWS_TESSERACT_WINGET_ID):
             steps.append(
                 DependencyInstallStep(
                     "tesseract",
                     "Tesseract OCR",
-                    ("winget", "install", "-e", "--id", "UB-Mannheim.TesseractOCR"),
+                    ("winget", "install", "-e", "--id", WINDOWS_TESSERACT_WINGET_ID),
                 )
             )
         if "ocrmypdf" in missing:
-            steps.append(
-                DependencyInstallStep(
-                    "ocrmypdf",
-                    "OCRmyPDF",
-                    ("winget", "install", "-e", "--id", "OCRmyPDF.OCRmyPDF"),
+            uv_executable = _discover_windows_uv_executable()
+            uv_will_be_available = uv_executable is not None
+            if uv_executable is None and _winget_package_available(WINDOWS_UV_WINGET_ID):
+                steps.append(
+                    DependencyInstallStep(
+                        "uv",
+                        "uv",
+                        ("winget", "install", "-e", "--id", WINDOWS_UV_WINGET_ID),
+                    )
                 )
-            )
-        if "ghostscript" in missing:
-            steps.append(
-                DependencyInstallStep(
-                    "ghostscript",
-                    "Ghostscript",
-                    ("winget", "install", "-e", "--id", "ArtifexSoftware.GhostScript"),
+                uv_will_be_available = True
+            if uv_will_be_available:
+                steps.append(
+                    DependencyInstallStep(
+                        "ocrmypdf",
+                        "OCRmyPDF",
+                        ("uv", "tool", "install", "ocrmypdf"),
+                    )
                 )
-            )
         return steps
     if active_system == "Darwin":
         brew_executable = find_executable("brew", extra_directories=macos_finder_search_paths())
@@ -230,3 +240,63 @@ def _sanitize_detail(line: str) -> str:
     if home:
         return line.replace(home, "<home>")
     return line
+
+
+def _winget_package_available(package_id: str) -> bool:
+    try:
+        completed = subprocess.run(
+            [
+                "winget",
+                "show",
+                "-e",
+                "--id",
+                package_id,
+                "--accept-source-agreements",
+            ],
+            shell=False,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            **background_subprocess_kwargs(),
+        )
+    except OSError:
+        return False
+    return completed.returncode == 0
+
+
+def _windows_uv_candidate_paths() -> tuple[Path, ...]:
+    paths: list[Path] = []
+    local_app_data = os.environ.get("LOCALAPPDATA", "").strip()
+    if local_app_data:
+        local = Path(local_app_data)
+        paths.extend(
+            [
+                local / "Microsoft" / "WinGet" / "Links" / "uv.exe",
+                local / "Programs" / "uv" / "uv.exe",
+                local / "Programs" / "uv" / "bin" / "uv.exe",
+            ]
+        )
+    program_files = os.environ.get("ProgramFiles", "").strip()
+    if program_files:
+        paths.append(Path(program_files) / "uv" / "uv.exe")
+    return tuple(paths)
+
+
+def _discover_windows_uv_executable() -> str | None:
+    from_path = find_executable("uv")
+    if from_path:
+        return from_path
+    for candidate in _windows_uv_candidate_paths():
+        if candidate.is_file():
+            return str(candidate.resolve())
+    return None
+
+
+def _resolve_step_command(step: DependencyInstallStep) -> tuple[str, ...]:
+    if system() == "Windows" and step.command and step.command[0] == "uv":
+        uv_executable = _discover_windows_uv_executable()
+        if uv_executable is not None:
+            return (uv_executable, *step.command[1:])
+    return step.command

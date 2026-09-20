@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from source_doc_converter import dependency_setup
 from source_doc_converter.dependency_setup import DependencyInstallStep, DependencySetupWorker
 from source_doc_converter.system_diagnostics import ComponentStatus, SystemDiagnostics
@@ -116,6 +118,28 @@ def test_dependency_setup_failure_preserves_full_details(monkeypatch, qtbot) -> 
     assert "line two" in failures[0]
 
 
+def test_dependency_setup_reports_uv_install_failure(monkeypatch, qtbot) -> None:
+    monkeypatch.setattr(
+        dependency_setup.subprocess,
+        "Popen",
+        lambda *args, **kwargs: FakeProcess(["uv install failed\n"], 1),
+    )
+    worker = DependencySetupWorker(
+        diagnostics_provider=lambda: diagnostics(("ocrmypdf",)),
+        steps_builder=lambda _: [
+            DependencyInstallStep("uv", "uv", ("winget", "install", "-e", "--id", "astral-sh.uv")),
+        ],
+    )
+    failures = []
+    worker.failed.connect(failures.append)
+
+    worker.run()
+
+    assert failures
+    assert "installing uv" in failures[0].lower()
+    assert "uv install failed" in failures[0]
+
+
 def test_default_steps_on_macos_require_homebrew(monkeypatch) -> None:
     monkeypatch.setattr(dependency_setup, "system", lambda: "Darwin")
     monkeypatch.setattr(dependency_setup, "find_executable", lambda *_args, **_kwargs: None)
@@ -149,17 +173,69 @@ def test_default_steps_on_macos_use_finder_safe_homebrew_path(monkeypatch) -> No
 def test_default_steps_on_windows_with_only_missing_ghostscript(monkeypatch) -> None:
     monkeypatch.setattr(dependency_setup, "system", lambda: "Windows")
     monkeypatch.setattr(dependency_setup.shutil, "which", lambda _: "winget")
+    monkeypatch.setattr(dependency_setup, "_winget_package_available", lambda _package_id: True)
 
     steps = dependency_setup._default_steps(diagnostics(("ghostscript",)))
 
-    assert [step.key for step in steps] == ["ghostscript"]
-    assert steps[0].command == (
-        "winget",
-        "install",
-        "-e",
-        "--id",
-        "ArtifexSoftware.GhostScript",
+    assert steps == []
+
+
+def test_default_steps_on_windows_with_missing_uv_adds_uv_and_ocrmypdf(monkeypatch) -> None:
+    monkeypatch.setattr(dependency_setup, "system", lambda: "Windows")
+    monkeypatch.setattr(dependency_setup.shutil, "which", lambda _: "winget")
+    monkeypatch.setattr(dependency_setup, "_discover_windows_uv_executable", lambda: None)
+    monkeypatch.setattr(dependency_setup, "_winget_package_available", lambda _package_id: True)
+
+    steps = dependency_setup._default_steps(diagnostics(("ocrmypdf",)))
+
+    assert [step.key for step in steps] == ["uv", "ocrmypdf"]
+    assert steps[0].command == ("winget", "install", "-e", "--id", "astral-sh.uv")
+    assert steps[1].command == ("uv", "tool", "install", "ocrmypdf")
+
+
+def test_default_steps_on_windows_with_existing_uv_installs_ocrmypdf_only(monkeypatch) -> None:
+    monkeypatch.setattr(dependency_setup, "system", lambda: "Windows")
+    monkeypatch.setattr(dependency_setup.shutil, "which", lambda _: "winget")
+    monkeypatch.setattr(
+        dependency_setup,
+        "_discover_windows_uv_executable",
+        lambda: "C:/Users/test/.local/bin/uv.exe",
     )
+    monkeypatch.setattr(dependency_setup, "_winget_package_available", lambda _package_id: True)
+
+    steps = dependency_setup._default_steps(diagnostics(("ocrmypdf",)))
+
+    assert [step.key for step in steps] == ["ocrmypdf"]
+    assert steps[0].command == ("uv", "tool", "install", "ocrmypdf")
+
+
+def test_default_steps_on_windows_skips_ocrmypdf_when_uv_unavailable(monkeypatch) -> None:
+    monkeypatch.setattr(dependency_setup, "system", lambda: "Windows")
+    monkeypatch.setattr(dependency_setup.shutil, "which", lambda _: "winget")
+    monkeypatch.setattr(dependency_setup, "_discover_windows_uv_executable", lambda: None)
+    monkeypatch.setattr(
+        dependency_setup,
+        "_winget_package_available",
+        lambda package_id: package_id != "astral-sh.uv",
+    )
+
+    steps = dependency_setup._default_steps(diagnostics(("ocrmypdf",)))
+
+    assert [step.key for step in steps] == []
+
+
+def test_resolve_uv_step_command_after_winget_install(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(dependency_setup, "system", lambda: "Windows")
+    monkeypatch.setattr(
+        dependency_setup,
+        "_discover_windows_uv_executable",
+        lambda: str(tmp_path / "links" / "uv.exe"),
+    )
+    command = dependency_setup._resolve_step_command(
+        DependencyInstallStep("ocrmypdf", "OCRmyPDF", ("uv", "tool", "install", "ocrmypdf"))
+    )
+
+    assert command == (str(tmp_path / "links" / "uv.exe"), "tool", "install", "ocrmypdf")
 
 
 def test_dependency_setup_reports_manual_setup_when_no_guided_installer(monkeypatch, qtbot) -> None:

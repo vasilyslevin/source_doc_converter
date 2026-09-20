@@ -1,3 +1,4 @@
+import builtins
 import subprocess
 from importlib.machinery import ModuleSpec
 
@@ -105,12 +106,19 @@ def test_missing_docling_package(monkeypatch) -> None:
 
 
 def test_missing_pypdf_package(monkeypatch) -> None:
-    monkeypatch.setattr(system_diagnostics.importlib_util, "find_spec", lambda name: None)
+    original_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "pypdf":
+            raise ImportError("No module named 'pypdf'")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
 
     result = system_diagnostics.check_pypdf()
 
     assert not result.available
-    assert result.error == "Package not installed"
+    assert "No module named" in (result.error or "")
 
 
 def test_docling_version_without_importing_models(monkeypatch) -> None:
@@ -153,12 +161,33 @@ def test_diagnostic_report_contains_no_sensitive_paths() -> None:
     assert "C:\\Users\\" not in text
 
 
+def test_diagnostic_report_includes_build_manifest_identity() -> None:
+    report = SystemDiagnostics(
+        application_version="0.1.0a0",
+        operating_system="TestOS",
+        operating_system_version="1",
+        architecture="test-arch",
+        python_version="3.12.0",
+        pyside_version="6.9.0",
+        components=(),
+        package_flavor="Lite",
+        source_commit_sha="abc1234",
+    )
+
+    text = report.to_text()
+
+    assert "Package flavor: Lite" in text
+    assert "Source commit: abc1234" in text
+
+
 def test_platform_specific_guidance() -> None:
     assert "Homebrew" in system_diagnostics.installation_guidance("ocrmypdf", "Darwin")
     assert "ghostscript" in system_diagnostics.installation_guidance("ocrmypdf", "Darwin").lower()
     assert "winget" in system_diagnostics.installation_guidance("tesseract", "Windows")
     assert "package manager" in system_diagnostics.installation_guidance("ocrmypdf", "Linux")
     assert "pypdf" in system_diagnostics.installation_guidance("pypdf", "Linux")
+    assert "astral-sh.uv" in system_diagnostics.installation_guidance("ocrmypdf", "Windows")
+    assert "optional" in system_diagnostics.installation_guidance("ghostscript", "Windows").lower()
 
 
 def test_ghostscript_missing_executable(monkeypatch) -> None:
@@ -179,5 +208,8 @@ def test_ghostscript_diagnostics_on_macos_uses_source_label(monkeypatch) -> None
     result = check_ghostscript()
 
     assert result.available
-    assert result.details == ("Required for searchable PDF output.", "Source: Homebrew")
+    assert result.details == (
+        "Optional/recommended for PDF/A and advanced OCRmyPDF post-processing.",
+        "Source: Homebrew",
+    )
     assert "/opt/homebrew/bin/gs" not in "\n".join(result.details)
