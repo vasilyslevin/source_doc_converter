@@ -229,73 +229,73 @@ function Invoke-PackageBuild {
     if ($LASTEXITCODE -ne 0) {
         throw "PyInstaller failed for $Name with exit code $LASTEXITCODE."
     }
+}
 
-    function Resolve-DistributionPath {
-        param(
-            [Parameter(Mandatory = $true)]
-            [string]$DistributionRoot,
-            [Parameter(Mandatory = $true)]
-            [string]$CandidatePath
-        )
+function Resolve-DistributionPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DistributionRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$CandidatePath
+    )
 
-        $NormalizedRoot = [System.IO.Path]::GetFullPath($DistributionRoot).TrimEnd("\", "/")
-        $NormalizedCandidate = [System.IO.Path]::GetFullPath($CandidatePath).TrimEnd("\", "/")
-        $Prefix = "$NormalizedRoot\"
-        if (
-            $NormalizedCandidate.Equals($NormalizedRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
-            $NormalizedCandidate.StartsWith($Prefix, [System.StringComparison]::OrdinalIgnoreCase)
-        ) {
-            return $NormalizedCandidate
-        }
-        return $null
+    $NormalizedRoot = [System.IO.Path]::GetFullPath($DistributionRoot).TrimEnd("\", "/")
+    $NormalizedCandidate = [System.IO.Path]::GetFullPath($CandidatePath).TrimEnd("\", "/")
+    $Prefix = "$NormalizedRoot\"
+    if (
+        $NormalizedCandidate.Equals($NormalizedRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+        $NormalizedCandidate.StartsWith($Prefix, [System.StringComparison]::OrdinalIgnoreCase)
+    ) {
+        return $NormalizedCandidate
     }
+    return $null
+}
 
-    function Get-DistributionRelativePath {
-        param(
-            [Parameter(Mandatory = $true)]
-            [string]$DistributionRoot,
-            [Parameter(Mandatory = $true)]
-            [string]$ResolvedPath
-        )
+function Get-DistributionRelativePath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DistributionRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$ResolvedPath
+    )
 
-        $NormalizedRoot = [System.IO.Path]::GetFullPath($DistributionRoot).TrimEnd("\", "/")
-        $NormalizedPath = [System.IO.Path]::GetFullPath($ResolvedPath).TrimEnd("\", "/")
-        if ($NormalizedPath.Equals($NormalizedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-            return "."
-        }
-        return $NormalizedPath.Substring($NormalizedRoot.Length + 1)
+    $NormalizedRoot = [System.IO.Path]::GetFullPath($DistributionRoot).TrimEnd("\", "/")
+    $NormalizedPath = [System.IO.Path]::GetFullPath($ResolvedPath).TrimEnd("\", "/")
+    if ($NormalizedPath.Equals($NormalizedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return "."
     }
+    return $NormalizedPath.Substring($NormalizedRoot.Length + 1)
+}
 
-    function Read-PeMachine {
-        param(
-            [Parameter(Mandatory = $true)]
-            [string]$Path
-        )
+function Read-PeMachine {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
 
-        $Stream = [System.IO.File]::OpenRead($Path)
-        try {
-            if ($Stream.Length -lt 64) {
-                throw "Not a PE file: $Path"
-            }
-            $Reader = [System.IO.BinaryReader]::new($Stream)
-            $DosSignature = $Reader.ReadUInt16()
-            if ($DosSignature -ne 0x5A4D) {
-                throw "Not a PE file: $Path"
-            }
-            $Stream.Position = 0x3C
-            $PeOffset = $Reader.ReadUInt32()
-            if ($Stream.Length -lt ($PeOffset + 6)) {
-                throw "Invalid PE header offset: $Path"
-            }
-            $Stream.Position = $PeOffset
-            $PeSignature = $Reader.ReadUInt32()
-            if ($PeSignature -ne 0x00004550) {
-                throw "Invalid PE header signature: $Path"
-            }
-            return $Reader.ReadUInt16()
-        } finally {
-            $Stream.Dispose()
+    $Stream = [System.IO.File]::OpenRead($Path)
+    try {
+        if ($Stream.Length -lt 64) {
+            throw "Not a PE file: $Path"
         }
+        $Reader = [System.IO.BinaryReader]::new($Stream)
+        $DosSignature = $Reader.ReadUInt16()
+        if ($DosSignature -ne 0x5A4D) {
+            throw "Not a PE file: $Path"
+        }
+        $Stream.Position = 0x3C
+        $PeOffset = $Reader.ReadUInt32()
+        if ($Stream.Length -lt ($PeOffset + 6)) {
+            throw "Invalid PE header offset: $Path"
+        }
+        $Stream.Position = $PeOffset
+        $PeSignature = $Reader.ReadUInt32()
+        if ($PeSignature -ne 0x00004550) {
+            throw "Invalid PE header signature: $Path"
+        }
+        return $Reader.ReadUInt16()
+    } finally {
+        $Stream.Dispose()
     }
 }
 
