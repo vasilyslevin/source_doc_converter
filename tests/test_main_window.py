@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from PySide6.QtCore import QPoint, QRect, Qt
-from PySide6.QtWidgets import QScrollArea
+from PySide6.QtWidgets import QScrollArea, QVBoxLayout
 
 from source_doc_converter.main_window import MainWindow
 
@@ -22,6 +22,7 @@ def test_window_launches(qtbot) -> None:
     assert window.json_checkbox.isEnabled()
     assert not window.process_button.isEnabled()
     assert not window.cancel_button.isEnabled()
+    assert not window.open_output_button.isEnabled()
 
 
 def test_adds_only_unique_pdf_files(qtbot, tmp_path: Path) -> None:
@@ -179,3 +180,44 @@ def test_queue_is_bounded_when_window_is_tall(qtbot) -> None:
 
     assert window.queue.maximumHeight() <= 240
     assert window.queue.height() <= 240
+
+
+def test_processing_controls_are_in_single_group_with_requested_order(qtbot) -> None:
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    assert window.open_output_button.parentWidget() is window.actions_group
+    actions_layout = window.actions_group.layout()
+    assert isinstance(actions_layout, QVBoxLayout)
+    assert actions_layout.itemAt(0).layout() is not None
+    action_row = actions_layout.itemAt(0).layout()
+    assert action_row.itemAt(0).widget() is window.process_button
+    assert action_row.itemAt(1).widget() is window.cancel_button
+    assert actions_layout.itemAt(1).widget() is window.activity_label
+    assert actions_layout.itemAt(2).widget() is window.progress_bar
+    open_row = actions_layout.itemAt(3).layout()
+    assert open_row is not None
+    assert open_row.itemAt(0).widget() is window.open_output_button
+
+
+def test_controls_remain_reachable_at_constrained_width_and_large_font(qtbot) -> None:
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.resize(540, 700)
+    window.setStyleSheet("QWidget { font-size: 18pt; }")
+    window.show()
+    qtbot.wait(10)
+
+    viewport = window.content_scroll.viewport()
+    max_x = viewport.width()
+    controls = (
+        window.searchable_pdf_checkbox,
+        window.markdown_checkbox,
+        window.json_checkbox,
+        window.process_button,
+        window.cancel_button,
+        window.open_output_button,
+    )
+    for control in controls:
+        pos = control.mapTo(viewport, QPoint(0, 0))
+        assert pos.x() + control.width() <= max_x

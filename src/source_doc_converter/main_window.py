@@ -149,8 +149,9 @@ class MainWindow(QMainWindow):
         self.next_step_label = QLabel("")
         self.next_step_label.setWordWrap(True)
 
-        output_types = QHBoxLayout()
+        output_types = QVBoxLayout()
         output_types_label = QLabel("4) Output formats:")
+        output_types_label.setWordWrap(True)
         self.searchable_pdf_checkbox = QCheckBox("Searchable PDF")
         self.searchable_pdf_checkbox.setChecked(True)
         self.markdown_checkbox = QCheckBox("Markdown for AI")
@@ -159,7 +160,6 @@ class MainWindow(QMainWindow):
         output_types.addWidget(self.searchable_pdf_checkbox)
         output_types.addWidget(self.markdown_checkbox)
         output_types.addWidget(self.json_checkbox)
-        output_types.addStretch()
         output_layout.addLayout(output_folder_row)
         output_layout.addLayout(output_types)
         output_layout.addWidget(self.next_step_label)
@@ -177,21 +177,29 @@ class MainWindow(QMainWindow):
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setEnabled(False)
         self.cancel_button.clicked.connect(self.cancel_processing)
+        self.open_output_button = QPushButton("Open Output Folder")
+        self.open_output_button.setEnabled(False)
+        self.open_output_button.clicked.connect(self.open_output_directory)
 
         self.searchable_pdf_checkbox.checkStateChanged.connect(self.update_process_button)
         self.markdown_checkbox.checkStateChanged.connect(self.update_process_button)
         self.json_checkbox.checkStateChanged.connect(self.update_process_button)
 
         action_row = QHBoxLayout()
-        action_row.addWidget(self.cancel_button)
         action_row.addWidget(self.process_button)
+        action_row.addWidget(self.cancel_button)
         action_row.addStretch()
+
+        open_output_row = QHBoxLayout()
+        open_output_row.addWidget(self.open_output_button)
+        open_output_row.addStretch()
 
         self.actions_group = QGroupBox("6) Process and 7) Activity")
         actions_layout = QVBoxLayout()
+        actions_layout.addLayout(action_row)
         actions_layout.addWidget(self.activity_label)
         actions_layout.addWidget(self.progress_bar)
-        actions_layout.addLayout(action_row)
+        actions_layout.addLayout(open_output_row)
         self.actions_group.setLayout(actions_layout)
 
         layout = QVBoxLayout()
@@ -493,3 +501,6 @@ class MainWindow(QMainWindow):
             create_json=create_json,
             executable=executable,
         )
+
+    def open_output_directory(self) -> None:
+        return

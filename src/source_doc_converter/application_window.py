@@ -109,11 +109,6 @@ class ApplicationWindow(MainWindow):
         self.about_action = help_menu.addAction("About")
         self.about_action.triggered.connect(self.show_about)
 
-        self.open_output_button = QPushButton("Open Output Folder")
-        self.open_output_button.setEnabled(False)
-        self.open_output_button.clicked.connect(self.open_output_directory)
-        self.statusBar().addPermanentWidget(self.open_output_button)
-
         self.refresh_output_availability()
         self._update_open_output_button()
         self.refresh_tesseract_runtime()
@@ -183,10 +178,9 @@ class ApplicationWindow(MainWindow):
                 break
         self.ocr_mode_combo.currentIndexChanged.connect(self._save_processing_preferences)
 
-        ocr_mode_row = QHBoxLayout()
+        ocr_mode_row = QVBoxLayout()
         ocr_mode_row.addWidget(QLabel("OCR mode:"))
         ocr_mode_row.addWidget(self.ocr_mode_combo)
-        ocr_mode_row.addStretch()
         self.ai_analysis_mode_combo = QComboBox()
         self.ai_analysis_mode_combo.addItem("Auto (recommended)", "auto")
         self.ai_analysis_mode_combo.addItem("Fast Markdown", "fast")
@@ -204,10 +198,9 @@ class ApplicationWindow(MainWindow):
         self.ai_analysis_mode_combo.currentIndexChanged.connect(
             self._update_table_analysis_availability
         )
-        ai_mode_row = QHBoxLayout()
+        ai_mode_row = QVBoxLayout()
         ai_mode_row.addWidget(QLabel("AI analysis mode:"))
         ai_mode_row.addWidget(self.ai_analysis_mode_combo)
-        ai_mode_row.addStretch()
 
         self.processing_profile_combo = QComboBox()
         self.processing_profile_combo.addItem("Maximum speed", "max_speed")
@@ -223,10 +216,9 @@ class ApplicationWindow(MainWindow):
                 self.processing_profile_combo.setCurrentIndex(index)
                 break
         self.processing_profile_combo.currentIndexChanged.connect(self._save_processing_preferences)
-        profile_row = QHBoxLayout()
+        profile_row = QVBoxLayout()
         profile_row.addWidget(QLabel("Processing profile:"))
         profile_row.addWidget(self.processing_profile_combo)
-        profile_row.addStretch()
 
         tesseract_layout = QVBoxLayout()
         tesseract_help = QLabel(
@@ -234,7 +226,7 @@ class ApplicationWindow(MainWindow):
         )
         tesseract_help.setWordWrap(True)
         tesseract_layout.addWidget(tesseract_help)
-        tesseract_row = QHBoxLayout()
+        tesseract_row = QVBoxLayout()
         self.tesseract_profile_combo = QComboBox()
         self.tesseract_profile_combo.currentIndexChanged.connect(self._on_tesseract_profile_changed)
         self.browse_tesseract_button = QPushButton("Browse Tesseract…")
@@ -242,8 +234,11 @@ class ApplicationWindow(MainWindow):
         self.reset_tesseract_button = QPushButton("Reset to Automatic")
         self.reset_tesseract_button.clicked.connect(self._reset_tesseract_profile)
         tesseract_row.addWidget(self.tesseract_profile_combo)
-        tesseract_row.addWidget(self.browse_tesseract_button)
-        tesseract_row.addWidget(self.reset_tesseract_button)
+        tesseract_actions_row = QHBoxLayout()
+        tesseract_actions_row.addWidget(self.browse_tesseract_button)
+        tesseract_actions_row.addWidget(self.reset_tesseract_button)
+        tesseract_actions_row.addStretch()
+        tesseract_row.addLayout(tesseract_actions_row)
         self.tesseract_languages_list = QListWidget()
         self.tesseract_languages_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
         self.tesseract_languages_list.itemSelectionChanged.connect(self._save_selected_languages)
@@ -258,10 +253,9 @@ class ApplicationWindow(MainWindow):
             "Used only for Searchable PDF output."
         )
 
-        ai_options_row = QHBoxLayout()
+        ai_options_row = QVBoxLayout()
         ai_options_row.addWidget(self.docling_ocr_checkbox)
         ai_options_row.addWidget(self.table_structure_checkbox)
-        ai_options_row.addStretch()
         ai_help = QLabel(
             "Docling OCR here affects Markdown/JSON outputs only."
         )
@@ -273,9 +267,8 @@ class ApplicationWindow(MainWindow):
         self.markdown_json_group = QGroupBox("Markdown and JSON analysis")
         self.markdown_json_group.setLayout(markdown_group_layout)
 
-        performance_row = QHBoxLayout()
+        performance_row = QVBoxLayout()
         performance_row.addWidget(self.cpu_only_checkbox)
-        performance_row.addStretch()
         performance_help = QLabel(
             "CPU only is best for compatibility. Allowing auto device selection may use GPU where supported."
         )
@@ -353,8 +346,6 @@ class ApplicationWindow(MainWindow):
     def _update_table_analysis_availability(self) -> None:
         mode = str(self.ai_analysis_mode_combo.currentData() or "auto")
         available = mode in {"auto", "accurate"} and self._docling_controls_allowed
-        if not available and self.table_structure_checkbox.isChecked():
-            self.table_structure_checkbox.setChecked(False)
         self.table_structure_checkbox.setEnabled(available)
         if available:
             self.table_structure_checkbox.setToolTip(
