@@ -1,4 +1,5 @@
 import os
+import re
 import unicodedata
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -28,9 +29,7 @@ def create_markdown_bundle(
             raise OcrCancelledError("Processing cancelled during combined Markdown bundle.")
         if not markdown_path.is_file():
             raise OcrError(f"Expected Markdown output was not created: {markdown_path}")
-        body = _normalize_newlines(markdown_path.read_text(encoding="utf-8", errors="strict")).strip(
-            "\n"
-        )
+        body = _read_markdown_body(markdown_path).strip("\n")
         heading = f"# Source: {_safe_source_label(source_pdf_path.name)}"
         sections.append(f"{heading}\n\n{body}" if body else f"{heading}\n")
 
@@ -82,4 +81,9 @@ def _replace_control(char: str) -> str:
 
 
 def _normalize_newlines(content: str) -> str:
-    return content.replace("\r\n", "\n").replace("\r", "\n")
+    return re.sub(r"\r\n?|\n", "\n", content)
+
+
+def _read_markdown_body(markdown_path: Path) -> str:
+    with markdown_path.open("r", encoding="utf-8", errors="strict", newline="") as handle:
+        return _normalize_newlines(handle.read())

@@ -48,7 +48,7 @@ def test_bundle_normalizes_newlines_and_handles_empty_markdown(tmp_path: Path) -
     first_md = tmp_path / "out" / "one.md"
     second_md = tmp_path / "out" / "two.md"
     first_md.parent.mkdir(parents=True)
-    first_md.write_text("line1\r\nline2\rline3\n", encoding="utf-8")
+    first_md.write_bytes(b"line1\r\nline2\rline3\n")
     second_md.write_text("", encoding="utf-8")
     destination = tmp_path / "out" / "combined_markdown.md"
 
@@ -57,6 +57,40 @@ def test_bundle_normalizes_newlines_and_handles_empty_markdown(tmp_path: Path) -
     text = destination.read_text(encoding="utf-8")
     assert "\r" not in text
     assert "# Source: one.pdf\n\nline1\nline2\nline3\n\n# Source: two.pdf\n" in text
+
+
+def test_bundle_preserves_genuine_double_blank_lines(tmp_path: Path) -> None:
+    source = tmp_path / "double-space.pdf"
+    markdown = tmp_path / "out" / "double-space.md"
+    destination = tmp_path / "out" / "combined_markdown.md"
+    markdown.parent.mkdir(parents=True)
+    markdown.write_text("line1\n\n\nline2\n", encoding="utf-8", newline="")
+
+    create_markdown_bundle(((source, markdown),), destination)
+
+    text = destination.read_text(encoding="utf-8")
+    assert "# Source: double-space.pdf\n\nline1\n\n\nline2\n" == text
+
+
+@pytest.mark.parametrize("ending", ("\r\n", "\r", "\n"))
+def test_bundle_uses_single_separator_after_trailing_newline_variants(
+    tmp_path: Path,
+    ending: str,
+) -> None:
+    first_pdf = tmp_path / "first.pdf"
+    second_pdf = tmp_path / "second.pdf"
+    first_md = tmp_path / "out" / "first.md"
+    second_md = tmp_path / "out" / "second.md"
+    destination = tmp_path / "out" / "combined_markdown.md"
+    first_md.parent.mkdir(parents=True)
+    first_md.write_text(f"line1{ending}", encoding="utf-8", newline="")
+    second_md.write_text("line2", encoding="utf-8", newline="")
+
+    create_markdown_bundle(((first_pdf, first_md), (second_pdf, second_md)), destination)
+
+    text = destination.read_text(encoding="utf-8")
+    assert text == "# Source: first.pdf\n\nline1\n\n# Source: second.pdf\n\nline2\n"
+    assert "\n\n\n# Source: second.pdf" not in text
 
 
 def test_bundle_uses_only_explicit_current_job_outputs(tmp_path: Path) -> None:
