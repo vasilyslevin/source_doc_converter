@@ -12,38 +12,41 @@ def test_getting_started_covers_basic_workflow_and_defaults() -> None:
     assert "7. Review progress/activity" in body
     assert "Adding a file only queues it" in body
     assert "No processing starts automatically" in body
+    assert "Combined Markdown bundle stays off unless you explicitly enable it" in body
 
 
 def test_settings_guide_explains_each_visible_option_and_scope() -> None:
     body = SETTINGS_GUIDE.body
     for text in (
         "Smart legal document (recommended)",
-        "Skip existing text keeps existing embedded text",
-        "Redo OCR replaces existing OCR text",
-        "Force OCR rasterizes and OCRs all pages",
-        "Automatic chooses the best validated installation available",
-        "Bundled uses the app-provided Tesseract package",
-        "System uses a detected OS installation on your PATH",
-        "Manual/Browse lets you select a specific executable path",
-        "Reset to Automatic returns selection control to automatic mode",
-        "eng = English text",
-        "osd = orientation/script detection",
-        "Auto (recommended) chooses a mode",
-        "Fast Markdown is quickest",
-        "Accurate Markdown preserves richer layout/structure",
-        "Analyze table structure improves extraction of complex tables",
-        "OCR scanned pages in AI output runs Docling OCR for Markdown/JSON generation only",
-        "Maximum speed uses more worker/thread capacity",
-        "Balanced keeps moderate resource use and speed",
-        "Energy saver reduces concurrency",
-        "CPU only enabled: uses CPU for maximum compatibility",
-        "CPU only disabled: allows automatic device selection",
-        "Docling powers Markdown for AI and Structured JSON and requires local model setup/download",
-        "Ghostscript is optional/recommended for PDF/A",
-        "Searchable PDF / OCR controls are used only when Searchable PDF output is selected",
-        "Markdown and JSON analysis controls are used only when Markdown for AI and/or Structured JSON is selected",
-        "Controls are intentionally disabled when their output is not selected",
-        "Valid combinations: you can run Searchable PDF only, AI outputs only, or any combination",
+        "Skip existing text: Keeps existing embedded text",
+        "Redo OCR: Replaces existing OCR text",
+        "Force OCR: Rasterizes and OCRs all pages",
+        "Automatic: Chooses the best validated installation available",
+        "Bundled: Uses the app-provided Tesseract package",
+        "System: Uses a detected OS installation on your PATH",
+        "Manual/Browse: Lets you select a specific executable path",
+        "Reset to Automatic: Returns selection control to automatic mode",
+        "eng: English text.",
+        "osd: Orientation/script detection.",
+        "Auto (recommended): Chooses a mode",
+        "Fast Markdown: Is quickest",
+        "Accurate Markdown: Preserves richer layout/structure",
+        "Analyze table structure: Improves extraction of complex tables",
+        "OCR scanned pages in AI output: Runs Docling OCR for Markdown/JSON generation only",
+        "Create combined Markdown bundle: Is available only when Markdown for AI is selected",
+        "Maximum speed: Uses more worker/thread capacity",
+        "Balanced: Keeps moderate resource use and speed",
+        "Energy saver: Reduces concurrency",
+        "CPU only enabled: Uses CPU for maximum compatibility",
+        "CPU only disabled: Allows automatic device selection",
+        "Docling: Powers Markdown for AI and Structured JSON and requires local model setup/download",
+        "Ghostscript: Is optional/recommended for PDF/A",
+        "Searchable PDF / OCR controls: Are used only when Searchable PDF output is selected",
+        "Markdown and JSON analysis controls: Are used only when Markdown for AI and/or Structured JSON is selected",
+        "Create combined Markdown bundle: Is disabled unless Markdown for AI is selected",
+        "Controls disabled state: Is intentional",
+        "Valid combinations: Let you run Searchable PDF only, AI outputs only, or any selected combination",
     ):
         assert text in body
 

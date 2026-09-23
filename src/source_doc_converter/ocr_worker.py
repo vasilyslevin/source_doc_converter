@@ -4,6 +4,10 @@ from threading import Event
 
 from PySide6.QtCore import QObject, Signal, Slot
 
+from source_doc_converter.markdown_bundle import (
+    DEFAULT_BUNDLE_FILENAME,
+    create_markdown_bundle,
+)
 from source_doc_converter.ocr_pipeline import (
     DoclingResult,
     OcrCancelledError,
@@ -29,6 +33,7 @@ class ProcessingWorker(QObject):
         create_searchable_pdf: bool,
         create_markdown: bool,
         create_json: bool,
+        create_markdown_bundle: bool = False,
         language: str = "eng",
         executable: str | None = None,
         tesseract_profile: TesseractRuntimeProfile | None = None,
@@ -46,6 +51,7 @@ class ProcessingWorker(QObject):
         self._create_searchable_pdf = create_searchable_pdf
         self._create_markdown = create_markdown
         self._create_json = create_json
+        self._create_markdown_bundle = create_markdown_bundle
         self._language = language
         self._executable = executable
         self._tesseract_profile = tesseract_profile
@@ -64,6 +70,8 @@ class ProcessingWorker(QObject):
         failed = 0
         cancelled = False
         total = len(self._input_paths)
+        markdown_outputs: list[tuple[Path, Path]] = []
+        omitted_markdown_sources: list[str] = []
         self.stage_changed.emit(
             "Runtime: "
             + f"OCR workers={self._ocr_workers}, "
@@ -125,6 +133,8 @@ class ProcessingWorker(QObject):
                     )
                     self.stage_changed.emit("Finalizing Markdown/JSON outputs")
                     self._append_docling_outputs(success_paths, docling_result)
+                    if self._create_markdown and docling_result.markdown_path is not None:
+                        markdown_outputs.append((input_path, docling_result.markdown_path))
                     for warning in docling_result.warnings:
                         success_paths.append(f"Warning: {warning}")
                     self._append_timings(success_paths, docling_result.timings)
@@ -136,11 +146,40 @@ class ProcessingWorker(QObject):
                 break
             except OcrError as error:
                 failed += 1
+                if self._create_markdown and self._create_markdown_bundle:
+                    omitted_markdown_sources.append(input_path.name)
                 self.file_failed.emit(str(input_path), str(error))
             else:
                 succeeded += 1
                 self.file_succeeded.emit(str(input_path), "\n".join(success_paths))
-
+        if (
+            self._create_markdown
+            and self._create_markdown_bundle
+            and not cancelled
+            and markdown_outputs
+        ):
+            self.stage_changed.emit("Creating combined Markdown bundle")
+            if omitted_markdown_sources:
+                unique = ", ".join(dict.fromkeys(omitted_markdown_sources))
+                self.stage_changed.emit(
+                    "Combined Markdown bundle will omit failed sources: " + unique
+                )
+            try:
+                bundle_path = create_markdown_bundle(
+                    tuple(markdown_outputs),
+                    self._output_directory / DEFAULT_BUNDLE_FILENAME,
+                    cancel_event=self._cancel_event,
+                )
+            except OcrCancelledError:
+                cancelled = True
+            except OcrError as error:
+                self.stage_changed.emit(f"Combined Markdown bundle failed: {error}")
+            else:
+                self.stage_changed.emit(f"Combined Markdown bundle created: {bundle_path}")
+        elif self._create_markdown and self._create_markdown_bundle and not cancelled:
+            self.stage_changed.emit(
+                "Combined Markdown bundle skipped: no Markdown outputs were created."
+            )
         elapsed = time.monotonic() - batch_started
         self.stage_changed.emit(f"Timing: Total batch {elapsed:.2f}s")
         self.finished.emit(cancelled, succeeded, failed)
