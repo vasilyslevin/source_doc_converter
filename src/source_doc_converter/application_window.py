@@ -8,7 +8,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -245,10 +244,9 @@ class ApplicationWindow(MainWindow):
         self.reset_tesseract_button = QPushButton("Reset to Automatic")
         self.reset_tesseract_button.clicked.connect(self._reset_tesseract_profile)
         tesseract_row.addWidget(self.tesseract_profile_combo)
-        tesseract_actions_row = QHBoxLayout()
+        tesseract_actions_row = QVBoxLayout()
         tesseract_actions_row.addWidget(self.browse_tesseract_button)
         tesseract_actions_row.addWidget(self.reset_tesseract_button)
-        tesseract_actions_row.addStretch()
         tesseract_row.addLayout(tesseract_actions_row)
         self.tesseract_languages_list = QListWidget()
         self.tesseract_languages_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
@@ -323,9 +321,8 @@ class ApplicationWindow(MainWindow):
         settings_help_button = QPushButton("Help: Settings Guide")
         settings_help_button.setAccessibleName("Open Settings Guide")
         settings_help_button.clicked.connect(self.show_settings_guide)
-        advanced_toggle_row = QHBoxLayout()
+        advanced_toggle_row = QVBoxLayout()
         advanced_toggle_row.addWidget(self.advanced_toggle_button)
-        advanced_toggle_row.addStretch()
         advanced_toggle_row.addWidget(settings_help_button)
 
         self.advanced_panel = QWidget()
