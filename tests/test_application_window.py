@@ -7,6 +7,7 @@ from source_doc_converter import main_window as base_main_window
 from source_doc_converter.application_window import (
     AI_ANALYSIS_MODE_SETTING,
     AI_TABLE_ANALYSIS_SETTING,
+    COMBINED_MARKDOWN_BUNDLE_SETTING,
     OCR_MODE_SETTING,
     PROCESSING_PROFILE_SETTING,
     ApplicationWindow,
@@ -83,6 +84,7 @@ def test_available_components_enable_outputs(qtbot) -> None:
     assert window.searchable_pdf_checkbox.isChecked()
     assert window.markdown_checkbox.isEnabled()
     assert window.json_checkbox.isEnabled()
+    assert not window.combined_markdown_bundle_checkbox.isEnabled()
 
 
 def test_diagnostics_update_output_availability(qtbot) -> None:
@@ -356,9 +358,12 @@ def test_ai_mode_and_profile_are_persisted_and_passed_to_worker(
     window.ai_analysis_mode_combo.setCurrentIndex(1)
     window.processing_profile_combo.setCurrentIndex(2)
     window.cpu_only_checkbox.setChecked(True)
+    window.markdown_checkbox.setChecked(True)
+    window.combined_markdown_bundle_checkbox.setChecked(True)
 
     assert str(settings.value(AI_ANALYSIS_MODE_SETTING, "")) == "fast"
     assert str(settings.value(PROCESSING_PROFILE_SETTING, "")) == "energy_saver"
+    assert settings.value(COMBINED_MARKDOWN_BUNDLE_SETTING, False, type=bool) is True
     worker = window._create_processing_worker(
         create_searchable_pdf=True,
         create_markdown=True,
@@ -369,6 +374,47 @@ def test_ai_mode_and_profile_are_persisted_and_passed_to_worker(
     assert worker._ocr_workers == 2
     assert worker._parser_threads == 2
     assert worker._inference_threads == 1
+    assert worker._create_markdown_bundle is True
+
+
+def test_combined_markdown_bundle_requires_markdown_output(qtbot) -> None:
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True)
+    )
+    qtbot.addWidget(window)
+
+    assert not window.combined_markdown_bundle_checkbox.isEnabled()
+    assert "Markdown for AI" in window.combined_markdown_bundle_checkbox.toolTip()
+
+    window.markdown_checkbox.setChecked(True)
+    assert window.combined_markdown_bundle_checkbox.isEnabled()
+    assert "this job only" in window.combined_markdown_bundle_checkbox.toolTip()
+
+    window.markdown_checkbox.setChecked(False)
+    window.json_checkbox.setChecked(True)
+    assert not window.combined_markdown_bundle_checkbox.isEnabled()
+
+
+def test_combined_markdown_bundle_default_off_and_persisted(qtbot, tmp_path: Path) -> None:
+    settings = QSettings(str(tmp_path / "bundle.ini"), QSettings.Format.IniFormat)
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True),
+        settings=settings,
+    )
+    qtbot.addWidget(window)
+
+    assert window.combined_markdown_bundle_checkbox.isChecked() is False
+    window.markdown_checkbox.setChecked(True)
+    window.combined_markdown_bundle_checkbox.setChecked(True)
+    assert settings.value(COMBINED_MARKDOWN_BUNDLE_SETTING, False, type=bool) is True
+
+    reloaded = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True),
+        settings=settings,
+    )
+    qtbot.addWidget(reloaded)
+    reloaded.markdown_checkbox.setChecked(True)
+    assert reloaded.combined_markdown_bundle_checkbox.isChecked() is True
 
 
 def test_auto_analysis_with_table_request_uses_table_mode_without_overwriting_selection(

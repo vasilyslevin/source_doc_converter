@@ -59,6 +59,7 @@ DOCLING_CPU_ONLY_SETTING = "processing/docling_cpu_only"
 OCR_MODE_SETTING = "processing/ocr_mode"
 AI_ANALYSIS_MODE_SETTING = "processing/ai_analysis_mode"
 PROCESSING_PROFILE_SETTING = "processing/performance_profile"
+COMBINED_MARKDOWN_BUNDLE_SETTING = "processing/combined_markdown_bundle"
 ADVANCED_OPTIONS_SETTING = "ui/advanced_options_expanded"
 
 
@@ -160,10 +161,23 @@ class ApplicationWindow(MainWindow):
         self.cpu_only_checkbox.setAccessibleDescription(
             "Use CPU-only processing for maximum compatibility and predictable behavior."
         )
+        self.combined_markdown_bundle_checkbox = QCheckBox(
+            "Create combined Markdown bundle"
+        )
+        self.combined_markdown_bundle_checkbox.setChecked(
+            self._setting_bool(COMBINED_MARKDOWN_BUNDLE_SETTING, False)
+        )
+        self.combined_markdown_bundle_checkbox.setToolTip(
+            "Creates one additional combined_markdown.md file using Markdown outputs from this job only."
+        )
+        self.combined_markdown_bundle_checkbox.setAccessibleDescription(
+            "Create one additional combined Markdown bundle only when Markdown for AI output is selected."
+        )
         for checkbox in (
             self.docling_ocr_checkbox,
             self.table_structure_checkbox,
             self.cpu_only_checkbox,
+            self.combined_markdown_bundle_checkbox,
         ):
             checkbox.toggled.connect(self._save_processing_preferences)
 
@@ -274,6 +288,12 @@ class ApplicationWindow(MainWindow):
         docling_ocr_help.setWordWrap(True)
         ai_options_row.addWidget(docling_ocr_help)
         ai_options_row.addWidget(self.table_structure_checkbox)
+        ai_options_row.addWidget(self.combined_markdown_bundle_checkbox)
+        combined_bundle_help = QLabel(
+            "Creates one extra combined_markdown.md file after individual Markdown files are generated."
+        )
+        combined_bundle_help.setWordWrap(True)
+        ai_options_row.addWidget(combined_bundle_help)
         ai_help = QLabel(
             "Docling OCR here affects Markdown/JSON outputs only."
         )
@@ -338,6 +358,7 @@ class ApplicationWindow(MainWindow):
             output_layout.addLayout(advanced_toggle_row)
             output_layout.addWidget(self.advanced_panel)
         self._update_table_analysis_availability()
+        self._update_combined_markdown_bundle_availability()
         self._update_advanced_relevance()
 
     def _configure_responsive_combo(self, combo: QComboBox, *, min_chars: int) -> None:
@@ -372,6 +393,10 @@ class ApplicationWindow(MainWindow):
             self.processing_profile_combo.currentData(),
         )
         self._settings.setValue(
+            COMBINED_MARKDOWN_BUNDLE_SETTING,
+            self.combined_markdown_bundle_checkbox.isChecked(),
+        )
+        self._settings.setValue(
             ADVANCED_OPTIONS_SETTING,
             self.advanced_toggle_button.isChecked(),
         )
@@ -402,6 +427,24 @@ class ApplicationWindow(MainWindow):
         )
         self.markdown_json_group.setEnabled(
             ai_selected and self.markdown_checkbox.isEnabled() and self._docling_controls_allowed
+        )
+        self._update_combined_markdown_bundle_availability()
+
+    def _update_combined_markdown_bundle_availability(self) -> None:
+        markdown_selected = self.markdown_checkbox.isChecked()
+        available = (
+            markdown_selected
+            and self.markdown_checkbox.isEnabled()
+            and self._docling_controls_allowed
+        )
+        self.combined_markdown_bundle_checkbox.setEnabled(available)
+        if available:
+            self.combined_markdown_bundle_checkbox.setToolTip(
+                "Creates one additional combined_markdown.md file using Markdown outputs from this job only."
+            )
+            return
+        self.combined_markdown_bundle_checkbox.setToolTip(
+            "Available only when Markdown for AI output is selected and enabled."
         )
 
     def refresh_tesseract_runtime(self) -> None:
@@ -537,6 +580,7 @@ class ApplicationWindow(MainWindow):
             self.docling_ocr_checkbox,
             self.table_structure_checkbox,
             self.cpu_only_checkbox,
+            self.combined_markdown_bundle_checkbox,
         ):
             checkbox.setEnabled(availability.docling)
         self._update_table_analysis_availability()
@@ -664,6 +708,7 @@ class ApplicationWindow(MainWindow):
             create_searchable_pdf=create_searchable_pdf,
             create_markdown=create_markdown,
             create_json=create_json,
+            create_markdown_bundle=self.combined_markdown_bundle_checkbox.isChecked(),
             language="+".join(selected_languages),
             executable=executable,
             tesseract_profile=profile,

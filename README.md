@@ -157,9 +157,10 @@ These controls reduce unintended network access but are not a substitute for ope
 3. Complete local model setup if Markdown or JSON is required.
 4. Drop PDF files or a folder into the application.
 5. Select Searchable PDF, Markdown for AI, Structured JSON, or a combination.
-6. Confirm or change the output folder.
-7. Select **Process Documents**.
-8. Use **Open Output Folder** after processing completes.
+6. Optional: enable **Create combined Markdown bundle** (available only with Markdown for AI).
+7. Confirm or change the output folder.
+8. Select **Process Documents**.
+9. Use **Open Output Folder** after processing completes.
 
 Unavailable output formats are disabled automatically. Searchable PDF depends on OCRmyPDF and Tesseract (Ghostscript is optional/recommended for PDF/A and advanced post-processing; Windows Full bundles OCRmyPDF + Tesseract while Windows Lite/macOS/source installs use external OCR tools). Markdown and JSON require both Docling and completed local model setup.
 
@@ -177,6 +178,15 @@ Converted/
 Docling reads `filing.searchable.pdf` during combined processing, but Markdown and JSON retain the original `filing` stem. Multi-dot filenames are also preserved.
 
 Existing output files are not overwritten. If a later stage fails, files created during that unsuccessful attempt are rolled back when safe to do so.
+
+When **Create combined Markdown bundle** is enabled with Markdown for AI, the app also writes:
+
+```text
+Converted/
+└── combined_markdown.md
+```
+
+The bundle preserves queue order, keeps individual Markdown files unchanged, and adds `# Source: <filename.pdf>` headings before each document section.
 
 Markdown output includes this page separator:
 
