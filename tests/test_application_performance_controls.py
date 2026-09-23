@@ -38,7 +38,7 @@ def test_processing_choices_persist_between_windows(qtbot, tmp_path: Path) -> No
     first.docling_ocr_checkbox.setChecked(True)
     first.table_structure_checkbox.setChecked(True)
     first.cpu_only_checkbox.setChecked(False)
-    first.ai_analysis_mode_combo.setCurrentIndex(3)
+    first.ai_analysis_mode_combo.setCurrentIndex(2)
     first.processing_profile_combo.setCurrentIndex(0)
 
     second = make_window(qtbot, settings)
@@ -46,7 +46,7 @@ def test_processing_choices_persist_between_windows(qtbot, tmp_path: Path) -> No
     assert second.docling_ocr_checkbox.isChecked()
     assert second.table_structure_checkbox.isChecked()
     assert not second.cpu_only_checkbox.isChecked()
-    assert second.ai_analysis_mode_combo.currentData() == "accurate_tables"
+    assert second.ai_analysis_mode_combo.currentData() == "accurate"
     assert second.processing_profile_combo.currentData() == "max_speed"
 
 

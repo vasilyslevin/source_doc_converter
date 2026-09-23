@@ -1,11 +1,12 @@
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QUrl
+from PySide6.QtCore import QPoint, QSettings, QUrl
 
 from source_doc_converter import application_window
 from source_doc_converter import main_window as base_main_window
 from source_doc_converter.application_window import (
     AI_ANALYSIS_MODE_SETTING,
+    AI_TABLE_ANALYSIS_SETTING,
     OCR_MODE_SETTING,
     PROCESSING_PROFILE_SETTING,
     ApplicationWindow,
@@ -46,6 +47,18 @@ def sample_installation(tmp_path: Path, *, source: str = "bundled") -> Tesseract
         tessdata=executable.parent / "tessdata",
         languages=("eng", "spa"),
     )
+
+
+def assert_reachable_with_optional_horizontal_scroll(window: ApplicationWindow, control) -> None:
+    viewport = window.content_scroll.viewport()
+    position = control.mapTo(viewport, QPoint(0, 0))
+    if position.x() + control.width() <= viewport.width():
+        return
+    horizontal = window.content_scroll.horizontalScrollBar()
+    assert horizontal.maximum() > 0
+    horizontal.setValue(horizontal.maximum())
+    position = control.mapTo(viewport, QPoint(0, 0))
+    assert position.x() + control.width() <= viewport.width()
 
 
 def test_unavailable_components_disable_outputs(qtbot) -> None:
@@ -389,3 +402,203 @@ def test_auto_analysis_with_table_request_uses_table_mode_without_overwriting_se
 
     assert window.ai_analysis_mode_combo.currentData() == "auto"
     assert worker._analysis_mode == "accurate_tables"
+
+
+def test_legacy_accurate_tables_migrates_to_single_table_setting(monkeypatch, qtbot, tmp_path: Path) -> None:
+    installation = sample_installation(tmp_path, source="path")
+    monkeypatch.setattr(
+        application_window,
+        "discover_tesseract_installations",
+        lambda: (installation,),
+    )
+    settings = QSettings(str(tmp_path / "settings7.ini"), QSettings.Format.IniFormat)
+    settings.setValue(AI_ANALYSIS_MODE_SETTING, "accurate_tables")
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True),
+        settings=settings,
+    )
+    qtbot.addWidget(window)
+
+    assert window.ai_analysis_mode_combo.currentData() == "accurate"
+    assert window.table_structure_checkbox.isChecked()
+    assert str(settings.value(AI_ANALYSIS_MODE_SETTING, "")) == "accurate"
+    assert settings.value(AI_TABLE_ANALYSIS_SETTING, False, type=bool) is True
+
+
+def test_help_menu_has_required_entries(qtbot) -> None:
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True)
+    )
+    qtbot.addWidget(window)
+
+    assert window.getting_started_action.text() == "Getting Started"
+    assert window.settings_guide_action.text() == "Settings Guide"
+    assert window.system_check_action.text() == "System Check"
+    assert window.about_action.text() == "About"
+
+
+def test_open_output_button_is_grouped_with_processing_controls(qtbot) -> None:
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True)
+    )
+    qtbot.addWidget(window)
+
+    assert window.open_output_button.parentWidget() is window.actions_group
+
+
+def test_advanced_groups_follow_output_selection(qtbot) -> None:
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True)
+    )
+    qtbot.addWidget(window)
+
+    window.searchable_pdf_checkbox.setChecked(False)
+    window.markdown_checkbox.setChecked(False)
+    window.json_checkbox.setChecked(False)
+    window.update_process_button()
+    assert not window.searchable_pdf_group.isEnabled()
+    assert not window.markdown_json_group.isEnabled()
+
+    window.searchable_pdf_checkbox.setChecked(True)
+    window.markdown_checkbox.setChecked(True)
+    window.update_process_button()
+    assert window.searchable_pdf_group.isEnabled()
+    assert window.markdown_json_group.isEnabled()
+
+
+def test_table_preference_is_preserved_when_fast_mode_is_selected(monkeypatch, qtbot, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        application_window,
+        "check_pypdf",
+        lambda: ComponentStatus("pypdf", "pypdf", True),
+    )
+    settings = QSettings(str(tmp_path / "settings8.ini"), QSettings.Format.IniFormat)
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True),
+        settings=settings,
+    )
+    qtbot.addWidget(window)
+    window.markdown_checkbox.setChecked(True)
+    window.table_structure_checkbox.setChecked(True)
+    window.ai_analysis_mode_combo.setCurrentIndex(window.ai_analysis_mode_combo.findData("fast"))
+
+    assert not window.table_structure_checkbox.isEnabled()
+    assert window.table_structure_checkbox.isChecked()
+    assert settings.value(AI_TABLE_ANALYSIS_SETTING, False, type=bool) is True
+
+    window.ai_analysis_mode_combo.setCurrentIndex(window.ai_analysis_mode_combo.findData("auto"))
+    assert window.table_structure_checkbox.isEnabled()
+    assert window.table_structure_checkbox.isChecked()
+
+
+def test_table_preference_is_preserved_when_docling_temporarily_unavailable(qtbot, tmp_path: Path) -> None:
+    settings = QSettings(str(tmp_path / "settings9.ini"), QSettings.Format.IniFormat)
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True),
+        settings=settings,
+    )
+    qtbot.addWidget(window)
+    window.markdown_checkbox.setChecked(True)
+    window.table_structure_checkbox.setChecked(True)
+
+    window.apply_output_availability(
+        OutputAvailability(True, False, "Docling unavailable")
+    )
+    assert not window.table_structure_checkbox.isEnabled()
+    assert window.table_structure_checkbox.isChecked()
+    assert settings.value(AI_TABLE_ANALYSIS_SETTING, False, type=bool) is True
+
+    window.apply_output_availability(OutputAvailability(True, True))
+    assert window.table_structure_checkbox.isChecked()
+    window.markdown_checkbox.setChecked(True)
+    assert window.table_structure_checkbox.isEnabled()
+    assert window.table_structure_checkbox.isChecked()
+
+
+def test_fast_mode_ignores_table_analysis_even_if_preference_remains_checked(
+    monkeypatch,
+    qtbot,
+    tmp_path: Path,
+) -> None:
+    installation = sample_installation(tmp_path, source="path")
+    monkeypatch.setattr(
+        application_window,
+        "discover_tesseract_installations",
+        lambda: (installation,),
+    )
+    monkeypatch.setattr(
+        application_window,
+        "check_pypdf",
+        lambda: ComponentStatus("pypdf", "pypdf", True),
+    )
+    settings = QSettings(str(tmp_path / "settings10.ini"), QSettings.Format.IniFormat)
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True),
+        settings=settings,
+    )
+    qtbot.addWidget(window)
+    window._pdf_paths.append(tmp_path / "filing.pdf")
+    window.set_output_directory(tmp_path / "out")
+    window.table_structure_checkbox.setChecked(True)
+    window.ai_analysis_mode_combo.setCurrentIndex(window.ai_analysis_mode_combo.findData("fast"))
+
+    worker = window._create_processing_worker(
+        create_searchable_pdf=False,
+        create_markdown=True,
+        create_json=False,
+        executable=None,
+    )
+
+    assert window.table_structure_checkbox.isChecked()
+    assert worker._analysis_mode == "fast"
+
+
+def test_advanced_controls_remain_reachable_on_constrained_width(qtbot) -> None:
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True)
+    )
+    qtbot.addWidget(window)
+    window.advanced_toggle_button.setChecked(True)
+    window.resize(620, 760)
+    window.show()
+    qtbot.wait(10)
+
+    controls = (
+        window.searchable_pdf_checkbox,
+        window.markdown_checkbox,
+        window.json_checkbox,
+        window.tesseract_profile_combo,
+        window.browse_tesseract_button,
+        window.reset_tesseract_button,
+        window.docling_ocr_checkbox,
+        window.table_structure_checkbox,
+        window.cpu_only_checkbox,
+        window.process_button,
+        window.cancel_button,
+        window.open_output_button,
+    )
+    for control in controls:
+        assert_reachable_with_optional_horizontal_scroll(window, control)
+
+
+def test_advanced_controls_reflow_for_large_font_size_hints(qtbot) -> None:
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True)
+    )
+    qtbot.addWidget(window)
+    window.advanced_toggle_button.setChecked(True)
+    window.resize(620, 820)
+    window.setStyleSheet("QWidget { font-size: 18pt; }")
+    window.show()
+    qtbot.wait(10)
+
+    controls = (
+        window.tesseract_profile_combo,
+        window.browse_tesseract_button,
+        window.reset_tesseract_button,
+        window.docling_ocr_checkbox,
+        window.table_structure_checkbox,
+        window.cpu_only_checkbox,
+    )
+    for control in controls:
+        assert_reachable_with_optional_horizontal_scroll(window, control)

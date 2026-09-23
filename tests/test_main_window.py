@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from PySide6.QtCore import QPoint, QRect, Qt
-from PySide6.QtWidgets import QScrollArea
+from PySide6.QtWidgets import QScrollArea, QVBoxLayout
 
 from source_doc_converter.main_window import MainWindow
 
@@ -9,6 +9,18 @@ from source_doc_converter.main_window import MainWindow
 def make_pdf(path: Path) -> Path:
     path.write_bytes(b"%PDF-1.4\n")
     return path
+
+
+def assert_reachable_with_optional_horizontal_scroll(scroll_area: QScrollArea, control) -> None:
+    viewport = scroll_area.viewport()
+    position = control.mapTo(viewport, QPoint(0, 0))
+    if position.x() + control.width() <= viewport.width():
+        return
+    horizontal = scroll_area.horizontalScrollBar()
+    assert horizontal.maximum() > 0
+    horizontal.setValue(horizontal.maximum())
+    position = control.mapTo(viewport, QPoint(0, 0))
+    assert position.x() + control.width() <= viewport.width()
 
 
 def test_window_launches(qtbot) -> None:
@@ -22,6 +34,7 @@ def test_window_launches(qtbot) -> None:
     assert window.json_checkbox.isEnabled()
     assert not window.process_button.isEnabled()
     assert not window.cancel_button.isEnabled()
+    assert not window.open_output_button.isEnabled()
 
 
 def test_adds_only_unique_pdf_files(qtbot, tmp_path: Path) -> None:
@@ -35,8 +48,9 @@ def test_adds_only_unique_pdf_files(qtbot, tmp_path: Path) -> None:
 
     assert window.pdf_paths == (pdf.resolve(),)
     assert window.queue.count() == 1
-    assert window.output_directory == (tmp_path / "Converted").resolve()
-    assert window.process_button.isEnabled()
+    assert window.output_directory is None
+    assert not window.process_button.isEnabled()
+    assert "choose an output folder" in window.next_step_label.text().lower()
 
 
 def test_adds_pdfs_from_folder(qtbot, tmp_path: Path) -> None:
@@ -58,6 +72,7 @@ def test_process_requires_any_output_selection(qtbot, tmp_path: Path) -> None:
     window = MainWindow()
     qtbot.addWidget(window)
     window.add_paths([str(pdf)])
+    window.set_output_directory(tmp_path / "out")
 
     window.searchable_pdf_checkbox.setChecked(False)
     assert not window.process_button.isEnabled()
@@ -158,3 +173,60 @@ def test_bottom_controls_remain_reachable_when_height_is_constrained(monkeypatch
     scrollbar.setValue(scrollbar.maximum())
     button_top = window.process_button.mapTo(scroll_area.viewport(), QPoint(0, 0)).y()
     assert button_top + window.process_button.height() <= scroll_area.viewport().height()
+
+
+def test_add_buttons_remain_inside_drop_area(qtbot) -> None:
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    assert window.add_files_button.parentWidget() is window.drop_area
+    assert window.add_folder_button.parentWidget() is window.drop_area
+
+
+def test_queue_is_bounded_when_window_is_tall(qtbot) -> None:
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.resize(1200, 1000)
+    window.show()
+    qtbot.wait(10)
+
+    assert window.queue.maximumHeight() <= 240
+    assert window.queue.height() <= 240
+
+
+def test_processing_controls_are_in_single_group_with_requested_order(qtbot) -> None:
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    assert window.open_output_button.parentWidget() is window.actions_group
+    actions_layout = window.actions_group.layout()
+    assert isinstance(actions_layout, QVBoxLayout)
+    assert actions_layout.itemAt(0).layout() is not None
+    action_row = actions_layout.itemAt(0).layout()
+    assert action_row.itemAt(0).widget() is window.process_button
+    assert action_row.itemAt(1).widget() is window.cancel_button
+    assert actions_layout.itemAt(1).widget() is window.activity_label
+    assert actions_layout.itemAt(2).widget() is window.progress_bar
+    open_row = actions_layout.itemAt(3).layout()
+    assert open_row is not None
+    assert open_row.itemAt(0).widget() is window.open_output_button
+
+
+def test_controls_remain_reachable_at_constrained_width_and_large_font(qtbot) -> None:
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.resize(540, 700)
+    window.setStyleSheet("QWidget { font-size: 18pt; }")
+    window.show()
+    qtbot.wait(10)
+
+    controls = (
+        window.searchable_pdf_checkbox,
+        window.markdown_checkbox,
+        window.json_checkbox,
+        window.process_button,
+        window.cancel_button,
+        window.open_output_button,
+    )
+    for control in controls:
+        assert_reachable_with_optional_horizontal_scroll(window.content_scroll, control)

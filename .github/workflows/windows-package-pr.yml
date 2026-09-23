@@ -1,4 +1,4 @@
-name: Windows package PR validation
+name: Windows package (Full and Lite) — PR validation
 
 on:
   workflow_dispatch:
@@ -6,8 +6,10 @@ on:
     branches:
       - main
     paths:
+      - "src/source_doc_converter/**"
       - "packaging/windows/**"
-      - "src/source_doc_converter/docling_tools_entry.py"
+      - "pyproject.toml"
+      - "requirements*.txt"
       - ".github/workflows/windows-package.yml"
       - ".github/workflows/windows-package-pr.yml"
       - "tests/test_windows_constraints.py"
