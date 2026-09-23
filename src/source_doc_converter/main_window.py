@@ -129,6 +129,10 @@ class MainWindow(QMainWindow):
         queue_controls.addStretch()
 
         self.queue_group = QGroupBox("Queue")
+        self.queue_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
         queue_group_layout = QVBoxLayout()
         queue_group_layout.addWidget(self.queue_summary_label)
         queue_group_layout.addWidget(self.queue_empty_label)
@@ -137,6 +141,10 @@ class MainWindow(QMainWindow):
         self.queue_group.setLayout(queue_group_layout)
 
         self.output_group = QGroupBox("3) Output")
+        self.output_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
         output_layout = QVBoxLayout()
         output_folder_row = QHBoxLayout()
         self.output_path_edit = QLineEdit()
@@ -195,6 +203,10 @@ class MainWindow(QMainWindow):
         open_output_row.addStretch()
 
         self.actions_group = QGroupBox("6) Process and 7) Activity")
+        self.actions_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
         actions_layout = QVBoxLayout()
         actions_layout.addLayout(action_row)
         actions_layout.addWidget(self.activity_label)
@@ -212,6 +224,8 @@ class MainWindow(QMainWindow):
         layout.addStretch()
 
         content = QWidget()
+        content.setMinimumWidth(0)
+        content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         content.setLayout(layout)
         self.content_scroll = QScrollArea()
         self.content_scroll.setWidgetResizable(True)

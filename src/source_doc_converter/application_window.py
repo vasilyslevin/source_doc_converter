@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -133,12 +134,15 @@ class ApplicationWindow(MainWindow):
         self._settings.sync()
 
     def _add_docling_performance_controls(self) -> None:
-        self.docling_ocr_checkbox = QCheckBox("OCR scanned pages in AI output")
+        self.docling_ocr_checkbox = QCheckBox("Use Docling OCR for AI output")
         self.docling_ocr_checkbox.setChecked(
             self._setting_bool(DOCLING_OCR_SETTING, False)
         )
         self.docling_ocr_checkbox.setToolTip(
             "Enable only for scanned PDFs without selectable text. This is slower."
+        )
+        self.docling_ocr_checkbox.setAccessibleDescription(
+            "Enable OCR scanned pages in AI output. This affects Markdown and JSON outputs only."
         )
         self.table_structure_checkbox = QCheckBox("Analyze table structure")
         self.table_structure_checkbox.setChecked(
@@ -147,12 +151,15 @@ class ApplicationWindow(MainWindow):
         self.table_structure_checkbox.setToolTip(
             "Improves complex tables but adds substantial CPU processing time."
         )
-        self.cpu_only_checkbox = QCheckBox("CPU only (maximum compatibility)")
+        self.cpu_only_checkbox = QCheckBox("CPU only")
         self.cpu_only_checkbox.setChecked(
             self._setting_bool(DOCLING_CPU_ONLY_SETTING, True)
         )
         self.cpu_only_checkbox.setToolTip(
             "Uncheck to let Docling automatically use a supported GPU when available."
+        )
+        self.cpu_only_checkbox.setAccessibleDescription(
+            "Use CPU-only processing for maximum compatibility and predictable behavior."
         )
         for checkbox in (
             self.docling_ocr_checkbox,
@@ -171,6 +178,7 @@ class ApplicationWindow(MainWindow):
             "Redo is intended for mixed pages or unreliable old OCR. "
             "Force rasterizes everything and is the last-resort repair mode."
         )
+        self._configure_responsive_combo(self.ocr_mode_combo, min_chars=20)
         saved_mode = str(self._settings.value(OCR_MODE_SETTING, "smart"))
         for index in range(self.ocr_mode_combo.count()):
             if self.ocr_mode_combo.itemData(index) == saved_mode:
@@ -189,6 +197,7 @@ class ApplicationWindow(MainWindow):
             "Auto picks a mode based on source content. "
             "Fast is quickest plain-text markdown. Accurate preserves richer layout."
         )
+        self._configure_responsive_combo(self.ai_analysis_mode_combo, min_chars=16)
         saved_analysis_mode = str(self._settings.value(AI_ANALYSIS_MODE_SETTING, "auto"))
         for index in range(self.ai_analysis_mode_combo.count()):
             if self.ai_analysis_mode_combo.itemData(index) == saved_analysis_mode:
@@ -210,6 +219,7 @@ class ApplicationWindow(MainWindow):
             "Maximum speed uses higher safe worker counts. "
             "Balanced is moderate. Energy saver uses 2 OCR workers and lower Docling threads."
         )
+        self._configure_responsive_combo(self.processing_profile_combo, min_chars=16)
         saved_profile = str(self._settings.value(PROCESSING_PROFILE_SETTING, "balanced"))
         for index in range(self.processing_profile_combo.count()):
             if self.processing_profile_combo.itemData(index) == saved_profile:
@@ -228,6 +238,7 @@ class ApplicationWindow(MainWindow):
         tesseract_layout.addWidget(tesseract_help)
         tesseract_row = QVBoxLayout()
         self.tesseract_profile_combo = QComboBox()
+        self._configure_responsive_combo(self.tesseract_profile_combo, min_chars=18)
         self.tesseract_profile_combo.currentIndexChanged.connect(self._on_tesseract_profile_changed)
         self.browse_tesseract_button = QPushButton("Browse Tesseract…")
         self.browse_tesseract_button.clicked.connect(self._browse_tesseract)
@@ -249,12 +260,21 @@ class ApplicationWindow(MainWindow):
         searchable_group_layout.addLayout(tesseract_layout)
         self.searchable_pdf_group = QGroupBox("Searchable PDF / OCR")
         self.searchable_pdf_group.setLayout(searchable_group_layout)
+        self.searchable_pdf_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
         self.searchable_pdf_group.setToolTip(
             "Used only for Searchable PDF output."
         )
 
         ai_options_row = QVBoxLayout()
         ai_options_row.addWidget(self.docling_ocr_checkbox)
+        docling_ocr_help = QLabel(
+            "Runs Docling OCR for Markdown/JSON outputs only. Searchable PDF OCR uses OCRmyPDF and Tesseract."
+        )
+        docling_ocr_help.setWordWrap(True)
+        ai_options_row.addWidget(docling_ocr_help)
         ai_options_row.addWidget(self.table_structure_checkbox)
         ai_help = QLabel(
             "Docling OCR here affects Markdown/JSON outputs only."
@@ -266,9 +286,18 @@ class ApplicationWindow(MainWindow):
         markdown_group_layout.addWidget(ai_help)
         self.markdown_json_group = QGroupBox("Markdown and JSON analysis")
         self.markdown_json_group.setLayout(markdown_group_layout)
+        self.markdown_json_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
 
         performance_row = QVBoxLayout()
         performance_row.addWidget(self.cpu_only_checkbox)
+        cpu_only_help = QLabel(
+            "CPU only is the most compatible option. Disable it to allow automatic device selection."
+        )
+        cpu_only_help.setWordWrap(True)
+        performance_row.addWidget(cpu_only_help)
         performance_help = QLabel(
             "CPU only is best for compatibility. Allowing auto device selection may use GPU where supported."
         )
@@ -279,6 +308,10 @@ class ApplicationWindow(MainWindow):
         performance_layout.addWidget(performance_help)
         self.performance_group = QGroupBox("Performance")
         self.performance_group.setLayout(performance_layout)
+        self.performance_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
 
         self.advanced_toggle_button = QToolButton()
         self.advanced_toggle_button.setText("5) Advanced options")
@@ -309,6 +342,14 @@ class ApplicationWindow(MainWindow):
             output_layout.addWidget(self.advanced_panel)
         self._update_table_analysis_availability()
         self._update_advanced_relevance()
+
+    def _configure_responsive_combo(self, combo: QComboBox, *, min_chars: int) -> None:
+        combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        combo.setMinimumContentsLength(min_chars)
+        combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        combo.setMinimumWidth(0)
 
     def _save_processing_preferences(self) -> None:
         self._settings.setValue(DOCLING_OCR_SETTING, self.docling_ocr_checkbox.isChecked())
