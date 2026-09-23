@@ -205,11 +205,9 @@ def test_processing_controls_are_in_single_group_with_requested_order(qtbot) -> 
     action_row = actions_layout.itemAt(0).layout()
     assert action_row.itemAt(0).widget() is window.process_button
     assert action_row.itemAt(1).widget() is window.cancel_button
+    assert action_row.itemAt(2).widget() is window.open_output_button
     assert actions_layout.itemAt(1).widget() is window.activity_label
     assert actions_layout.itemAt(2).widget() is window.progress_bar
-    open_row = actions_layout.itemAt(3).layout()
-    assert open_row is not None
-    assert open_row.itemAt(0).widget() is window.open_output_button
 
 
 def test_controls_remain_reachable_at_constrained_width_and_large_font(qtbot) -> None:
@@ -230,3 +228,63 @@ def test_controls_remain_reachable_at_constrained_width_and_large_font(qtbot) ->
     )
     for control in controls:
         assert_reachable_with_optional_horizontal_scroll(window.content_scroll, control)
+
+
+def test_basic_workflow_fits_large_viewport_without_outer_scrollbars(monkeypatch, qtbot, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        "source_doc_converter.ui_geometry.available_geometry_for_widget",
+        lambda _: QRect(0, 0, 1600, 1000),
+    )
+    pdf = make_pdf(tmp_path / "filing.pdf")
+    output = tmp_path / "out"
+    output.mkdir()
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.resize(1400, 900)
+    window.show()
+    window.add_paths([str(pdf)])
+    window.set_output_directory(output)
+    qtbot.wait(20)
+
+    assert window.content_scroll.horizontalScrollBar().maximum() == 0
+    assert window.content_scroll.verticalScrollBar().maximum() == 0
+    viewport = window.content_scroll.viewport()
+    for control in (
+        window.add_files_button,
+        window.queue,
+        window.output_path_edit,
+        window.searchable_pdf_checkbox,
+        window.process_button,
+        window.cancel_button,
+        window.open_output_button,
+    ):
+        top_left = control.mapTo(viewport, QPoint(0, 0))
+        assert top_left.x() >= 0
+        assert top_left.y() >= 0
+        assert top_left.x() + control.width() <= viewport.width()
+        assert top_left.y() + control.height() <= viewport.height()
+
+
+def test_main_window_resize_large_small_large_releases_stale_scrollbars(monkeypatch, qtbot) -> None:
+    monkeypatch.setattr(
+        "source_doc_converter.ui_geometry.available_geometry_for_widget",
+        lambda _: QRect(0, 0, 1600, 1000),
+    )
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.resize(1400, 900)
+    window.show()
+    qtbot.wait(20)
+
+    assert window.content_scroll.horizontalScrollBar().maximum() == 0
+
+    window.resize(1024, 680)
+    qtbot.wait(20)
+    small_vertical_max = window.content_scroll.verticalScrollBar().maximum()
+    assert small_vertical_max >= 0
+
+    window.resize(1400, 900)
+    qtbot.wait(20)
+    assert window.content_scroll.horizontalScrollBar().maximum() == 0
+    assert window.content_scroll.verticalScrollBar().maximum() == 0

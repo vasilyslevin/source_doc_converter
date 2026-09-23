@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, QSettings, QUrl
+from PySide6.QtCore import QPoint, QRect, QSettings, QUrl
 
 from source_doc_converter import application_window
 from source_doc_converter import main_window as base_main_window
@@ -648,3 +648,68 @@ def test_advanced_controls_reflow_for_large_font_size_hints(qtbot) -> None:
     )
     for control in controls:
         assert_reachable_with_optional_horizontal_scroll(window, control)
+
+
+def test_advanced_layout_fits_large_viewport_without_outer_scrollbars(
+    monkeypatch,
+    qtbot,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        "source_doc_converter.ui_geometry.available_geometry_for_widget",
+        lambda _: QRect(0, 0, 1800, 1200),
+    )
+    settings = QSettings(str(tmp_path / "layout-default.ini"), QSettings.Format.IniFormat)
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True),
+        settings=settings,
+    )
+    qtbot.addWidget(window)
+    window.advanced_toggle_button.setChecked(True)
+    window.resize(1560, 980)
+    window.show()
+    qtbot.wait(20)
+
+    assert window.content_scroll.horizontalScrollBar().maximum() == 0
+    assert window.content_scroll.verticalScrollBar().maximum() == 0
+    assert window.markdown_json_group.geometry().x() > window.searchable_pdf_group.geometry().x()
+
+
+def test_advanced_layout_keeps_controls_reachable_with_larger_font(monkeypatch, qtbot, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        "source_doc_converter.ui_geometry.available_geometry_for_widget",
+        lambda _: QRect(0, 0, 1800, 1200),
+    )
+    settings = QSettings(str(tmp_path / "layout-large-font.ini"), QSettings.Format.IniFormat)
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True),
+        settings=settings,
+    )
+    qtbot.addWidget(window)
+    window.setStyleSheet("QWidget { font-size: 14pt; }")
+    window.advanced_toggle_button.setChecked(True)
+    window.resize(1560, 980)
+    window.show()
+    qtbot.wait(20)
+
+    assert window.content_scroll.horizontalScrollBar().maximum() == 0
+    window.content_scroll.verticalScrollBar().setValue(
+        window.content_scroll.verticalScrollBar().maximum()
+    )
+    assert_reachable_with_optional_horizontal_scroll(window, window.process_button)
+
+
+def test_advanced_layout_reflows_to_single_column_on_narrower_width(qtbot, tmp_path: Path) -> None:
+    settings = QSettings(str(tmp_path / "layout-narrow.ini"), QSettings.Format.IniFormat)
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True),
+        settings=settings,
+    )
+    qtbot.addWidget(window)
+    window.advanced_toggle_button.setChecked(True)
+    window.resize(760, 900)
+    window.show()
+    qtbot.wait(20)
+
+    assert window.content_scroll.horizontalScrollBar().maximum() == 0
+    assert not window._advanced_two_column

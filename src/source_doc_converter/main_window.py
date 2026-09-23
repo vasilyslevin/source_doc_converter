@@ -1,11 +1,12 @@
 from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt, QThread, Signal
-from PySide6.QtGui import QDragEnterEvent, QDropEvent, QShowEvent
+from PySide6.QtGui import QDragEnterEvent, QDropEvent, QResizeEvent, QShowEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QFileDialog,
     QFrame,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -32,15 +33,15 @@ class PdfDropArea(QFrame):
     def __init__(self) -> None:
         super().__init__()
         self.setAcceptDrops(True)
-        self.setMinimumHeight(130)
-        self.setMaximumHeight(180)
+        self.setMinimumHeight(88)
+        self.setMaximumHeight(128)
         self.setStyleSheet(
-            "QFrame { border: 2px dashed #777; border-radius: 8px; padding: 12px; }"
+            "QFrame { border: 2px dashed #777; border-radius: 8px; padding: 6px; }"
         )
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
 
         title = QLabel("1) Add documents by dropping PDF files/folders here")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -84,6 +85,8 @@ class PdfDropArea(QFrame):
 
 
 class MainWindow(QMainWindow):
+    _WIDE_LAYOUT_THRESHOLD = 980
+
     def __init__(self) -> None:
         super().__init__()
         self._pdf_paths: list[Path] = []
@@ -146,7 +149,7 @@ class MainWindow(QMainWindow):
             QSizePolicy.Policy.Preferred,
         )
         output_layout = QVBoxLayout()
-        output_folder_row = QVBoxLayout()
+        output_folder_row = QHBoxLayout()
         self.output_path_edit = QLineEdit()
         self.output_path_edit.setReadOnly(True)
         self.output_path_edit.setPlaceholderText("Choose an output folder (required)")
@@ -154,7 +157,7 @@ class MainWindow(QMainWindow):
         self.output_path_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.choose_output_button = QPushButton("Choose Folder")
         self.choose_output_button.clicked.connect(self.choose_output_directory)
-        self.choose_output_button.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        self.choose_output_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         output_folder_row.addWidget(self.output_path_edit)
         output_folder_row.addWidget(self.choose_output_button)
         self.next_step_label = QLabel("")
@@ -199,11 +202,8 @@ class MainWindow(QMainWindow):
         action_row = QHBoxLayout()
         action_row.addWidget(self.process_button)
         action_row.addWidget(self.cancel_button)
+        action_row.addWidget(self.open_output_button)
         action_row.addStretch()
-
-        open_output_row = QHBoxLayout()
-        open_output_row.addWidget(self.open_output_button)
-        open_output_row.addStretch()
 
         self.actions_group = QGroupBox("6) Process and 7) Activity")
         self.actions_group.setSizePolicy(
@@ -214,28 +214,26 @@ class MainWindow(QMainWindow):
         actions_layout.addLayout(action_row)
         actions_layout.addWidget(self.activity_label)
         actions_layout.addWidget(self.progress_bar)
-        actions_layout.addLayout(open_output_row)
         self.actions_group.setLayout(actions_layout)
 
-        layout = QVBoxLayout()
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(10)
-        layout.addWidget(self.drop_area)
-        layout.addWidget(self.queue_group)
-        layout.addWidget(self.output_group)
-        layout.addWidget(self.actions_group)
-        layout.addStretch()
+        self._content_layout = QGridLayout()
+        self._content_layout.setContentsMargins(8, 8, 8, 8)
+        self._content_layout.setHorizontalSpacing(10)
+        self._content_layout.setVerticalSpacing(6)
+        self._wide_layout_enabled: bool | None = None
 
         content = QWidget()
         content.setMinimumWidth(0)
-        content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        content.setLayout(layout)
+        content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        content.setLayout(self._content_layout)
         self.content_scroll = QScrollArea()
         self.content_scroll.setWidgetResizable(True)
         self.content_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.content_scroll.setWidget(content)
+        self.content_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.content_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.setCentralWidget(self.content_scroll)
+        self._arrange_primary_sections()
         self.statusBar().showMessage("Add one or more PDF files")
         self._refresh_queue_summary()
         self._update_next_step_guidance()
@@ -243,7 +241,43 @@ class MainWindow(QMainWindow):
 
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
+        self._arrange_primary_sections()
         ui_geometry.clamp_widget_to_available_screen(self)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._arrange_primary_sections()
+
+    def _arrange_primary_sections(self) -> None:
+        viewport = self.content_scroll.viewport()
+        available_width = viewport.width() if viewport is not None else self.width()
+        use_wide_layout = available_width >= self._WIDE_LAYOUT_THRESHOLD
+        if self._wide_layout_enabled == use_wide_layout:
+            return
+        self._wide_layout_enabled = use_wide_layout
+
+        while self._content_layout.count():
+            self._content_layout.takeAt(0)
+
+        if use_wide_layout:
+            self.queue.setMaximumHeight(210)
+            self._content_layout.addWidget(self.drop_area, 0, 0, 1, 2)
+            self._content_layout.addWidget(self.queue_group, 1, 0)
+            self._content_layout.addWidget(self.output_group, 1, 1)
+            self._content_layout.addWidget(self.actions_group, 2, 0, 1, 2)
+            self._content_layout.setColumnStretch(0, 1)
+            self._content_layout.setColumnStretch(1, 1)
+            self._content_layout.setRowStretch(3, 1)
+            return
+
+        self.queue.setMaximumHeight(240)
+        self._content_layout.addWidget(self.drop_area, 0, 0)
+        self._content_layout.addWidget(self.queue_group, 1, 0)
+        self._content_layout.addWidget(self.output_group, 2, 0)
+        self._content_layout.addWidget(self.actions_group, 3, 0)
+        self._content_layout.setColumnStretch(0, 1)
+        self._content_layout.setColumnStretch(1, 0)
+        self._content_layout.setRowStretch(4, 1)
 
     @property
     def pdf_paths(self) -> tuple[Path, ...]:

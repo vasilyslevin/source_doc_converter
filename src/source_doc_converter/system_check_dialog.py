@@ -1,13 +1,14 @@
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QSize, QThread, QUrl, Signal
+from PySide6.QtCore import QSettings, QSize, Qt, QThread, QUrl, Signal
 from PySide6.QtGui import QCloseEvent, QColor, QDesktopServices, QShowEvent
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFileDialog,
     QFrame,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -118,11 +120,16 @@ class SystemCheckDialog(QDialog):
         )
         self.component_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.component_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        self.component_table.setWordWrap(True)
+        self.component_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.component_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.component_table.setMinimumWidth(0)
 
         self.guidance_label = QPlainTextEdit()
         self.guidance_label.setReadOnly(True)
         self.guidance_label.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self.guidance_label.setMinimumHeight(72)
+        self.guidance_label.setMaximumHeight(96)
         self.guidance_label.setPlaceholderText("No installation guidance needed.")
 
         dependency_group = QGroupBox("Guided OCR tool setup")
@@ -134,20 +141,22 @@ class SystemCheckDialog(QDialog):
         self.cancel_setup_button = QPushButton("Cancel Setup")
         self.cancel_setup_button.setEnabled(False)
         self.cancel_setup_button.clicked.connect(self.cancel_setup)
-        dependency_buttons = QHBoxLayout()
-        dependency_buttons.addWidget(self.setup_dependencies_button)
-        dependency_buttons.addWidget(self.ghostscript_button)
-        dependency_buttons.addWidget(self.cancel_setup_button)
-        dependency_buttons.addStretch()
-        dependency_layout = QVBoxLayout()
-        dependency_layout.addWidget(
-            QLabel(
-                "Installs missing OCRmyPDF/Tesseract dependencies in the background. "
-                "Uses Homebrew on macOS or winget on Windows after explicit confirmation. "
-                "Windows Full bundles OCRmyPDF and Tesseract. "
-                "Ghostscript remains optional/recommended for PDF/A and advanced post-processing."
-            )
+        dependency_buttons = QGridLayout()
+        dependency_buttons.setHorizontalSpacing(8)
+        dependency_buttons.setVerticalSpacing(6)
+        dependency_buttons.addWidget(self.setup_dependencies_button, 0, 0)
+        dependency_buttons.addWidget(self.ghostscript_button, 0, 1)
+        dependency_buttons.addWidget(self.cancel_setup_button, 1, 0)
+        dependency_buttons.setColumnStretch(2, 1)
+        dependency_copy = QLabel(
+            "Installs missing OCRmyPDF/Tesseract dependencies in the background. "
+            "Uses Homebrew on macOS or winget on Windows after explicit confirmation. "
+            "Windows Full bundles OCRmyPDF and Tesseract. "
+            "Ghostscript remains optional/recommended for PDF/A and advanced post-processing."
         )
+        dependency_copy.setWordWrap(True)
+        dependency_layout = QVBoxLayout()
+        dependency_layout.addWidget(dependency_copy)
         dependency_layout.addLayout(dependency_buttons)
         dependency_group.setLayout(dependency_layout)
 
@@ -163,12 +172,14 @@ class SystemCheckDialog(QDialog):
         self.cancel_download_button = QPushButton("Cancel Download")
         self.cancel_download_button.setEnabled(False)
         self.cancel_download_button.clicked.connect(self.cancel_model_download)
-        model_buttons = QHBoxLayout()
-        model_buttons.addWidget(self.choose_model_button)
-        model_buttons.addWidget(self.reset_model_button)
-        model_buttons.addWidget(self.download_model_button)
-        model_buttons.addWidget(self.cancel_download_button)
-        model_buttons.addStretch()
+        model_buttons = QGridLayout()
+        model_buttons.setHorizontalSpacing(8)
+        model_buttons.setVerticalSpacing(6)
+        model_buttons.addWidget(self.choose_model_button, 0, 0)
+        model_buttons.addWidget(self.reset_model_button, 0, 1)
+        model_buttons.addWidget(self.download_model_button, 1, 0)
+        model_buttons.addWidget(self.cancel_download_button, 1, 1)
+        model_buttons.setColumnStretch(2, 1)
         model_layout = QVBoxLayout()
         model_layout.addWidget(self.model_status_label)
         model_layout.addLayout(model_buttons)
@@ -188,6 +199,8 @@ class SystemCheckDialog(QDialog):
         buttons.addWidget(self.close_button)
 
         content_layout = QVBoxLayout()
+        content_layout.setContentsMargins(8, 8, 8, 8)
+        content_layout.setSpacing(6)
         content_layout.addWidget(self.system_label)
         content_layout.addLayout(status_row)
         content_layout.addWidget(self.component_table)
@@ -195,13 +208,16 @@ class SystemCheckDialog(QDialog):
         content_layout.addWidget(dependency_group)
         content_layout.addWidget(model_group)
         content = QWidget()
+        content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         content.setLayout(content_layout)
-        content_scroll = QScrollArea()
-        content_scroll.setWidgetResizable(True)
-        content_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        content_scroll.setWidget(content)
+        self.content_scroll = QScrollArea()
+        self.content_scroll.setWidgetResizable(True)
+        self.content_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.content_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.content_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.content_scroll.setWidget(content)
         layout = QVBoxLayout()
-        layout.addWidget(content_scroll)
+        layout.addWidget(self.content_scroll)
         layout.addLayout(buttons)
         self.setLayout(layout)
         self.setTabOrder(self.details_button, self.setup_dependencies_button)
@@ -500,6 +516,8 @@ class SystemCheckDialog(QDialog):
 
         guidance = [installation_guidance(component) for component in missing_components]
         self.guidance_label.setPlainText("\n".join(dict.fromkeys(guidance)))
+        self.component_table.resizeColumnsToContents()
+        self.component_table.setColumnWidth(1, min(self.component_table.columnWidth(1), 220))
         has_guided_steps = bool(_default_steps(diagnostics))
         self.setup_dependencies_button.setEnabled(has_guided_steps and not self._setup_active())
         show_ghostscript_action = diagnostics.operating_system == "Windows" and ghostscript_missing
