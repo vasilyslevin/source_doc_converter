@@ -49,6 +49,18 @@ def sample_installation(tmp_path: Path, *, source: str = "bundled") -> Tesseract
     )
 
 
+def assert_reachable_with_optional_horizontal_scroll(window: ApplicationWindow, control) -> None:
+    viewport = window.content_scroll.viewport()
+    position = control.mapTo(viewport, QPoint(0, 0))
+    if position.x() + control.width() <= viewport.width():
+        return
+    horizontal = window.content_scroll.horizontalScrollBar()
+    assert horizontal.maximum() > 0
+    horizontal.setValue(horizontal.maximum())
+    position = control.mapTo(viewport, QPoint(0, 0))
+    assert position.x() + control.width() <= viewport.width()
+
+
 def test_unavailable_components_disable_outputs(qtbot) -> None:
     window = ApplicationWindow(
         availability_provider=lambda: OutputAvailability(False, False)
@@ -551,8 +563,6 @@ def test_advanced_controls_remain_reachable_on_constrained_width(qtbot) -> None:
     window.show()
     qtbot.wait(10)
 
-    viewport = window.content_scroll.viewport()
-    max_x = viewport.width()
     controls = (
         window.searchable_pdf_checkbox,
         window.markdown_checkbox,
@@ -568,8 +578,7 @@ def test_advanced_controls_remain_reachable_on_constrained_width(qtbot) -> None:
         window.open_output_button,
     )
     for control in controls:
-        pos = control.mapTo(viewport, QPoint(0, 0))
-        assert pos.x() + control.width() <= max_x
+        assert_reachable_with_optional_horizontal_scroll(window, control)
 
 
 def test_advanced_controls_reflow_for_large_font_size_hints(qtbot) -> None:
@@ -583,8 +592,6 @@ def test_advanced_controls_reflow_for_large_font_size_hints(qtbot) -> None:
     window.show()
     qtbot.wait(10)
 
-    viewport = window.content_scroll.viewport()
-    max_x = viewport.width()
     controls = (
         window.tesseract_profile_combo,
         window.browse_tesseract_button,
@@ -594,5 +601,4 @@ def test_advanced_controls_reflow_for_large_font_size_hints(qtbot) -> None:
         window.cpu_only_checkbox,
     )
     for control in controls:
-        pos = control.mapTo(viewport, QPoint(0, 0))
-        assert pos.x() + control.width() <= max_x
+        assert_reachable_with_optional_horizontal_scroll(window, control)

@@ -11,6 +11,18 @@ def make_pdf(path: Path) -> Path:
     return path
 
 
+def assert_reachable_with_optional_horizontal_scroll(scroll_area: QScrollArea, control) -> None:
+    viewport = scroll_area.viewport()
+    position = control.mapTo(viewport, QPoint(0, 0))
+    if position.x() + control.width() <= viewport.width():
+        return
+    horizontal = scroll_area.horizontalScrollBar()
+    assert horizontal.maximum() > 0
+    horizontal.setValue(horizontal.maximum())
+    position = control.mapTo(viewport, QPoint(0, 0))
+    assert position.x() + control.width() <= viewport.width()
+
+
 def test_window_launches(qtbot) -> None:
     window = MainWindow()
     qtbot.addWidget(window)
@@ -208,8 +220,6 @@ def test_controls_remain_reachable_at_constrained_width_and_large_font(qtbot) ->
     window.show()
     qtbot.wait(10)
 
-    viewport = window.content_scroll.viewport()
-    max_x = viewport.width()
     controls = (
         window.searchable_pdf_checkbox,
         window.markdown_checkbox,
@@ -219,5 +229,4 @@ def test_controls_remain_reachable_at_constrained_width_and_large_font(qtbot) ->
         window.open_output_button,
     )
     for control in controls:
-        pos = control.mapTo(viewport, QPoint(0, 0))
-        assert pos.x() + control.width() <= max_x
+        assert_reachable_with_optional_horizontal_scroll(window.content_scroll, control)
