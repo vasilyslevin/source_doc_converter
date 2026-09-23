@@ -14,20 +14,36 @@ def test_getting_started_covers_basic_workflow_and_defaults() -> None:
     assert "No processing starts automatically" in body
 
 
-def test_settings_guide_mentions_key_components_and_settings() -> None:
+def test_settings_guide_explains_each_visible_option_and_scope() -> None:
     body = SETTINGS_GUIDE.body
     for text in (
-        "Searchable PDF",
-        "Markdown for AI",
-        "Structured JSON",
-        "OCRmyPDF",
-        "Tesseract",
-        "OCR mode",
-        "AI analysis mode",
-        "Analyze table structure",
-        "CPU only",
-        "Docling",
-        "Ghostscript",
+        "Smart legal document (recommended)",
+        "Skip existing text keeps existing embedded text",
+        "Redo OCR replaces existing OCR text",
+        "Force OCR rasterizes and OCRs all pages",
+        "Automatic chooses the best validated installation available",
+        "Bundled uses the app-provided Tesseract package",
+        "System uses a detected OS installation on your PATH",
+        "Manual/Browse lets you select a specific executable path",
+        "Reset to Automatic returns selection control to automatic mode",
+        "eng = English text",
+        "osd = orientation/script detection",
+        "Auto (recommended) chooses a mode",
+        "Fast Markdown is quickest",
+        "Accurate Markdown preserves richer layout/structure",
+        "Analyze table structure improves extraction of complex tables",
+        "OCR scanned pages in AI output runs Docling OCR for Markdown/JSON generation only",
+        "Maximum speed uses more worker/thread capacity",
+        "Balanced keeps moderate resource use and speed",
+        "Energy saver reduces concurrency",
+        "CPU only enabled: uses CPU for maximum compatibility",
+        "CPU only disabled: allows automatic device selection",
+        "Docling powers Markdown for AI and Structured JSON and requires local model setup/download",
+        "Ghostscript is optional/recommended for PDF/A",
+        "Searchable PDF / OCR controls are used only when Searchable PDF output is selected",
+        "Markdown and JSON analysis controls are used only when Markdown for AI and/or Structured JSON is selected",
+        "Controls are intentionally disabled when their output is not selected",
+        "Valid combinations: you can run Searchable PDF only, AI outputs only, or any combination",
     ):
         assert text in body
 

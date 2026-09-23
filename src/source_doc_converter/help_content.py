@@ -31,31 +31,50 @@ Fresh-install behavior:
 SETTINGS_GUIDE = HelpSection(
     title="Settings Guide",
     body="""
-Output types:
-- Searchable PDF: creates OCR text layer using OCRmyPDF + Tesseract.
-- Markdown for AI: creates markdown optimized for AI ingestion using Docling.
-- Structured JSON: creates structured extraction output using Docling.
+What each output creates:
+- Searchable PDF uses OCRmyPDF + Tesseract to add searchable/selectable text to a PDF.
+- Markdown for AI uses Docling to create markdown for AI workflows.
+- Structured JSON uses Docling to create structured extraction data.
 
-Searchable PDF / OCR:
-- OCR mode: Smart, Skip, Redo, Force (speed/quality trade-offs).
-- Tesseract selection: Automatic/Bundled/System/Manual executable.
-- OCR languages: selected Tesseract languages used for Searchable PDF OCR.
-- Tesseract recognizes text in scanned pages; OCRmyPDF builds the searchable PDF.
+Searchable PDF / OCR settings (these affect Searchable PDF output):
+- OCR mode: Smart legal document (recommended) checks whether a page already has usable text and handles common legal-document mixes of digital text + scanned pages safely.
+- Skip existing text keeps existing embedded text and OCRs only pages that have no text layer.
+- Redo OCR replaces existing OCR text when old OCR appears unreliable (for example, bad copy quality or garbled text).
+- Force OCR rasterizes and OCRs all pages, which is slower and can reduce existing PDF structure/fidelity; use it only as a repair option.
+- Tesseract selection:
+  - Automatic chooses the best validated installation available.
+  - Bundled uses the app-provided Tesseract package when present.
+  - System uses a detected OS installation on your PATH.
+  - Manual/Browse lets you select a specific executable path.
+  - Reset to Automatic returns selection control to automatic mode.
+- OCR languages: choose the languages Tesseract should recognize (eng = English text, osd = orientation/script detection). Selecting only needed languages usually improves speed and can reduce recognition errors.
 
-Markdown and JSON analysis:
-- AI analysis mode: Auto, Fast Markdown, Accurate Markdown.
-- Analyze table structure: improves table extraction for accurate modes, slower.
-- OCR scanned pages in AI output: Docling OCR for AI outputs only (distinct from Searchable PDF OCR).
+Markdown and JSON analysis settings (these affect Markdown/JSON outputs):
+- AI analysis mode:
+  - Auto (recommended) chooses a mode based on document characteristics.
+  - Fast Markdown is quickest and favors simpler/plain extraction.
+  - Accurate Markdown preserves richer layout/structure but uses more processing.
+- Analyze table structure improves extraction of complex tables for accurate Markdown/JSON analysis and adds extra processing time.
+- OCR scanned pages in AI output runs Docling OCR for Markdown/JSON generation only. This is separate from OCRmyPDF/Tesseract, which are used for Searchable PDF output.
 
-Performance:
-- Processing profile: Maximum speed, Balanced, Energy saver.
-- CPU only: best compatibility and predictable behavior.
-- Disabling CPU only allows automatic device selection where supported; GPU use may vary.
+Performance settings:
+- Maximum speed uses more worker/thread capacity to finish sooner.
+- Balanced keeps moderate resource use and speed.
+- Energy saver reduces concurrency to lower system load.
+- CPU only enabled: uses CPU for maximum compatibility and predictable behavior.
+- CPU only disabled: allows automatic device selection when supported by your environment; this does not guarantee GPU acceleration.
 
-Components:
-- Docling handles Markdown/JSON conversion and requires local model files.
-- OCRmyPDF and Tesseract are required for Searchable PDF output.
-- Ghostscript is optional/recommended for PDF/A and advanced post-processing.
+Component roles and setup:
+- OCRmyPDF + Tesseract power Searchable PDF creation.
+- Docling powers Markdown for AI and Structured JSON and requires local model setup/download.
+- Ghostscript is optional/recommended for PDF/A and advanced PDF post-processing support.
+
+Which controls apply and why some are disabled:
+- Searchable PDF / OCR controls are used only when Searchable PDF output is selected.
+- Markdown and JSON analysis controls are used only when Markdown for AI and/or Structured JSON is selected.
+- Analyze table structure is enabled only when AI analysis mode supports it (Auto or Accurate).
+- Controls are intentionally disabled when their output is not selected or when required runtime components are unavailable.
+- Valid combinations: you can run Searchable PDF only, AI outputs only, or any combination of selected outputs; behavior follows the selected outputs and enabled controls above.
 """.strip(),
 )
 
