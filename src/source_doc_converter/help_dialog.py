@@ -2,8 +2,8 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import QDialog, QTextBrowser, QVBoxLayout
 
-from source_doc_converter.help_content import HelpSection
 from source_doc_converter import ui_geometry
+from source_doc_converter.help_content import HelpSection
 
 
 class HelpDialog(QDialog):
