@@ -6,6 +6,7 @@ from source_doc_converter import application_window
 from source_doc_converter import main_window as base_main_window
 from source_doc_converter.application_window import (
     AI_ANALYSIS_MODE_SETTING,
+    AI_TABLE_ANALYSIS_SETTING,
     OCR_MODE_SETTING,
     PROCESSING_PROFILE_SETTING,
     ApplicationWindow,
@@ -389,3 +390,56 @@ def test_auto_analysis_with_table_request_uses_table_mode_without_overwriting_se
 
     assert window.ai_analysis_mode_combo.currentData() == "auto"
     assert worker._analysis_mode == "accurate_tables"
+
+
+def test_legacy_accurate_tables_migrates_to_single_table_setting(monkeypatch, qtbot, tmp_path: Path) -> None:
+    installation = sample_installation(tmp_path, source="path")
+    monkeypatch.setattr(
+        application_window,
+        "discover_tesseract_installations",
+        lambda: (installation,),
+    )
+    settings = QSettings(str(tmp_path / "settings7.ini"), QSettings.Format.IniFormat)
+    settings.setValue(AI_ANALYSIS_MODE_SETTING, "accurate_tables")
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True),
+        settings=settings,
+    )
+    qtbot.addWidget(window)
+
+    assert window.ai_analysis_mode_combo.currentData() == "accurate"
+    assert window.table_structure_checkbox.isChecked()
+    assert str(settings.value(AI_ANALYSIS_MODE_SETTING, "")) == "accurate"
+    assert settings.value(AI_TABLE_ANALYSIS_SETTING, False, type=bool) is True
+
+
+def test_help_menu_has_required_entries(qtbot) -> None:
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True)
+    )
+    qtbot.addWidget(window)
+
+    assert window.getting_started_action.text() == "Getting Started"
+    assert window.settings_guide_action.text() == "Settings Guide"
+    assert window.system_check_action.text() == "System Check"
+    assert window.about_action.text() == "About"
+
+
+def test_advanced_groups_follow_output_selection(qtbot) -> None:
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True)
+    )
+    qtbot.addWidget(window)
+
+    window.searchable_pdf_checkbox.setChecked(False)
+    window.markdown_checkbox.setChecked(False)
+    window.json_checkbox.setChecked(False)
+    window.update_process_button()
+    assert not window.searchable_pdf_group.isEnabled()
+    assert not window.markdown_json_group.isEnabled()
+
+    window.searchable_pdf_checkbox.setChecked(True)
+    window.markdown_checkbox.setChecked(True)
+    window.update_process_button()
+    assert window.searchable_pdf_group.isEnabled()
+    assert window.markdown_json_group.isEnabled()

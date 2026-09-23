@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -25,18 +26,39 @@ from source_doc_converter.ocr_pipeline import find_ocrmypdf
 from source_doc_converter.ocr_worker import ProcessingWorker
 
 
-class PdfDropArea(QLabel):
+class PdfDropArea(QFrame):
     paths_dropped = Signal(list)
 
     def __init__(self) -> None:
-        super().__init__("Drop PDF files or folders here")
+        super().__init__()
         self.setAcceptDrops(True)
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setMinimumHeight(140)
+        self.setMinimumHeight(130)
+        self.setMaximumHeight(180)
         self.setStyleSheet(
-            "QLabel { border: 2px dashed #777; border-radius: 8px; "
-            "font-size: 18px; padding: 24px; }"
+            "QFrame { border: 2px dashed #777; border-radius: 8px; padding: 12px; }"
         )
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
+
+        title = QLabel("1) Add documents by dropping PDF files/folders here")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setWordWrap(True)
+        layout.addWidget(title)
+
+        or_label = QLabel("OR")
+        or_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(or_label)
+
+        button_row = QHBoxLayout()
+        self.add_files_button = QPushButton("Add PDFs")
+        self.add_folder_button = QPushButton("Add Folder")
+        button_row.addStretch()
+        button_row.addWidget(self.add_files_button)
+        button_row.addWidget(self.add_folder_button)
+        button_row.addStretch()
+        layout.addLayout(button_row)
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         if self._contains_supported_path(event.mimeData().urls()):
@@ -76,50 +98,71 @@ class MainWindow(QMainWindow):
 
         self.drop_area = PdfDropArea()
         self.drop_area.paths_dropped.connect(self.add_paths)
+        self.add_files_button = self.drop_area.add_files_button
+        self.add_files_button.clicked.connect(self.choose_files)
+        self.add_folder_button = self.drop_area.add_folder_button
+        self.add_folder_button.clicked.connect(self.choose_folder)
+
+        self.queue_summary_label = QLabel("2) Review file queue — 0 files")
+        self.queue_summary_label.setWordWrap(True)
+        self.queue_empty_label = QLabel(
+            "No files added yet. Add PDFs or a folder to build the queue."
+        )
+        self.queue_empty_label.setWordWrap(True)
+        self.queue_empty_label.setObjectName("queueEmptyStateLabel")
         self.queue = QListWidget()
         self.queue.setAlternatingRowColors(True)
         self.queue.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.queue.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
-        self.queue.setMinimumHeight(220)
+        self.queue.setMinimumHeight(120)
+        self.queue.setMaximumHeight(240)
+        self.queue.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
-        self.add_files_button = QPushButton("Add PDFs")
-        self.add_files_button.clicked.connect(self.choose_files)
-        self.add_folder_button = QPushButton("Add Folder")
-        self.add_folder_button.clicked.connect(self.choose_folder)
         self.remove_button = QPushButton("Remove Selected")
         self.remove_button.clicked.connect(self.remove_selected)
         self.clear_button = QPushButton("Clear")
         self.clear_button.clicked.connect(self.clear_queue)
 
         queue_controls = QHBoxLayout()
-        queue_controls.addWidget(self.add_files_button)
-        queue_controls.addWidget(self.add_folder_button)
-        queue_controls.addStretch()
         queue_controls.addWidget(self.remove_button)
         queue_controls.addWidget(self.clear_button)
+        queue_controls.addStretch()
 
-        self.output_group = QGroupBox("Output")
+        self.queue_group = QGroupBox("Queue")
+        queue_group_layout = QVBoxLayout()
+        queue_group_layout.addWidget(self.queue_summary_label)
+        queue_group_layout.addWidget(self.queue_empty_label)
+        queue_group_layout.addWidget(self.queue)
+        queue_group_layout.addLayout(queue_controls)
+        self.queue_group.setLayout(queue_group_layout)
+
+        self.output_group = QGroupBox("3) Output")
         output_layout = QVBoxLayout()
         output_folder_row = QHBoxLayout()
         self.output_path_edit = QLineEdit()
         self.output_path_edit.setReadOnly(True)
-        self.output_path_edit.setPlaceholderText("Choose an output folder")
+        self.output_path_edit.setPlaceholderText("Choose an output folder (required)")
         self.choose_output_button = QPushButton("Choose Folder")
         self.choose_output_button.clicked.connect(self.choose_output_directory)
         output_folder_row.addWidget(self.output_path_edit)
         output_folder_row.addWidget(self.choose_output_button)
+        self.next_step_label = QLabel("")
+        self.next_step_label.setWordWrap(True)
 
         output_types = QHBoxLayout()
+        output_types_label = QLabel("4) Output formats:")
         self.searchable_pdf_checkbox = QCheckBox("Searchable PDF")
         self.searchable_pdf_checkbox.setChecked(True)
         self.markdown_checkbox = QCheckBox("Markdown for AI")
         self.json_checkbox = QCheckBox("Structured JSON")
+        output_types.addWidget(output_types_label)
         output_types.addWidget(self.searchable_pdf_checkbox)
         output_types.addWidget(self.markdown_checkbox)
         output_types.addWidget(self.json_checkbox)
         output_types.addStretch()
         output_layout.addLayout(output_folder_row)
         output_layout.addLayout(output_types)
+        output_layout.addWidget(self.next_step_label)
         self.output_group.setLayout(output_layout)
 
         self.progress_bar = QProgressBar()
@@ -128,7 +171,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setFormat("Ready")
         self.activity_label = QLabel("Activity: Ready")
 
-        self.process_button = QPushButton("Process Documents")
+        self.process_button = QPushButton("6) Process Documents")
         self.process_button.setEnabled(False)
         self.process_button.clicked.connect(self.start_processing)
         self.cancel_button = QPushButton("Cancel")
@@ -140,17 +183,25 @@ class MainWindow(QMainWindow):
         self.json_checkbox.checkStateChanged.connect(self.update_process_button)
 
         action_row = QHBoxLayout()
-        action_row.addWidget(self.progress_bar)
         action_row.addWidget(self.cancel_button)
         action_row.addWidget(self.process_button)
+        action_row.addStretch()
+
+        self.actions_group = QGroupBox("6) Process and 7) Activity")
+        actions_layout = QVBoxLayout()
+        actions_layout.addWidget(self.activity_label)
+        actions_layout.addWidget(self.progress_bar)
+        actions_layout.addLayout(action_row)
+        self.actions_group.setLayout(actions_layout)
 
         layout = QVBoxLayout()
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
         layout.addWidget(self.drop_area)
-        layout.addLayout(queue_controls)
-        layout.addWidget(self.queue, 1)
+        layout.addWidget(self.queue_group)
         layout.addWidget(self.output_group)
-        layout.addWidget(self.activity_label)
-        layout.addLayout(action_row)
+        layout.addWidget(self.actions_group)
+        layout.addStretch()
 
         content = QWidget()
         content.setLayout(layout)
@@ -158,9 +209,12 @@ class MainWindow(QMainWindow):
         self.content_scroll.setWidgetResizable(True)
         self.content_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.content_scroll.setWidget(content)
+        self.content_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setCentralWidget(self.content_scroll)
         self.statusBar().showMessage("Add one or more PDF files")
-        ui_geometry.apply_initial_geometry(self, QSize(760, 680))
+        self._refresh_queue_summary()
+        self._update_next_step_guidance()
+        ui_geometry.apply_initial_geometry(self, QSize(760, 620))
 
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
@@ -215,9 +269,8 @@ class MainWindow(QMainWindow):
             self.queue.addItem(str(resolved))
             known.add(resolved)
 
-        if self._pdf_paths and self._output_directory is None:
-            self.set_output_directory(self._pdf_paths[0].parent / "Converted")
         self._update_status()
+        self._refresh_queue_summary()
         self.update_process_button()
 
     def remove_selected(self) -> None:
@@ -226,26 +279,35 @@ class MainWindow(QMainWindow):
             self.queue.takeItem(row)
             self._pdf_paths.pop(row)
         self._update_status()
+        self._refresh_queue_summary()
         self.update_process_button()
 
     def clear_queue(self) -> None:
         self.queue.clear()
         self._pdf_paths.clear()
         self._update_status()
+        self._refresh_queue_summary()
         self.update_process_button()
 
     def update_process_button(self) -> None:
-        ready = bool(
-            self._pdf_paths
-            and self._output_directory
-            and (
-                self.searchable_pdf_checkbox.isChecked()
-                or self.markdown_checkbox.isChecked()
-                or self.json_checkbox.isChecked()
-            )
-            and not self._processing
-        )
+        if self._processing:
+            reason = "Processing is already running."
+        elif not self._pdf_paths:
+            reason = "Add at least one PDF file to the queue."
+        elif self._output_directory is None:
+            reason = "Choose an output folder before processing."
+        elif not (
+            self.searchable_pdf_checkbox.isChecked()
+            or self.markdown_checkbox.isChecked()
+            or self.json_checkbox.isChecked()
+        ):
+            reason = "Select at least one output format."
+        else:
+            reason = ""
+        ready = reason == ""
         self.process_button.setEnabled(ready)
+        self.process_button.setToolTip(reason)
+        self._update_next_step_guidance(reason)
 
     def start_processing(self) -> None:
         if self._processing or self._output_directory is None:
@@ -389,6 +451,26 @@ class MainWindow(QMainWindow):
         else:
             message = f"{count} PDF file{'s' if count != 1 else ''} queued"
         self.statusBar().showMessage(message)
+
+    def _refresh_queue_summary(self) -> None:
+        count = len(self._pdf_paths)
+        self.queue_summary_label.setText(
+            f"2) Review file queue — {count} file{'s' if count != 1 else ''}"
+        )
+        self.queue_empty_label.setVisible(count == 0)
+
+    def _update_next_step_guidance(self, process_reason: str = "") -> None:
+        if self._processing:
+            text = "Processing in progress…"
+        elif not self._pdf_paths:
+            text = "Getting started: add PDFs or a folder."
+        elif self._output_directory is None:
+            text = "Next: choose an output folder."
+        elif process_reason:
+            text = f"Next: {process_reason}"
+        else:
+            text = "Ready: click Process Documents."
+        self.next_step_label.setText(text)
 
     def _set_activity(self, value: str) -> None:
         self.activity_label.setText(f"Activity: {value}")

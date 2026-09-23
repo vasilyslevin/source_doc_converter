@@ -7,13 +7,16 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFileDialog,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QToolButton,
     QVBoxLayout,
+    QWidget,
 )
 from PySide6.QtWidgets import (
     QListWidgetItem as QtListWidgetItem,
@@ -23,6 +26,8 @@ from source_doc_converter.docling_runtime import (
     _cpu_thread_count,
 )
 from source_doc_converter.error_dialog import ErrorDetailsDialog
+from source_doc_converter.help_content import ABOUT, GETTING_STARTED, SETTINGS_GUIDE, HelpSection
+from source_doc_converter.help_dialog import HelpDialog
 from source_doc_converter.main_window import MainWindow
 from source_doc_converter.model_management import (
     ModelDirectoryState,
@@ -49,10 +54,12 @@ from source_doc_converter.system_diagnostics import (
 
 DOCLING_OCR_SETTING = "processing/docling_ocr"
 DOCLING_TABLES_SETTING = "processing/docling_tables"
+AI_TABLE_ANALYSIS_SETTING = "processing/ai_table_analysis"
 DOCLING_CPU_ONLY_SETTING = "processing/docling_cpu_only"
 OCR_MODE_SETTING = "processing/ocr_mode"
 AI_ANALYSIS_MODE_SETTING = "processing/ai_analysis_mode"
 PROCESSING_PROFILE_SETTING = "processing/performance_profile"
+ADVANCED_OPTIONS_SETTING = "ui/advanced_options_expanded"
 
 
 def format_elapsed(milliseconds: int) -> str:
@@ -84,12 +91,23 @@ class ApplicationWindow(MainWindow):
         self._processing_file = ""
         self._tesseract_installations: tuple[TesseractInstallation, ...] = ()
         self._active_tesseract_languages: tuple[str, ...] = ()
+        self._docling_controls_allowed = True
+        self._migrate_table_preferences()
         self.queue.itemClicked.connect(self.show_queue_item_details)
         self._add_docling_performance_controls()
+        self.searchable_pdf_checkbox.checkStateChanged.connect(self._update_advanced_relevance)
+        self.markdown_checkbox.checkStateChanged.connect(self._update_advanced_relevance)
+        self.json_checkbox.checkStateChanged.connect(self._update_advanced_relevance)
 
         help_menu = self.menuBar().addMenu("Help")
+        self.getting_started_action = help_menu.addAction("Getting Started")
+        self.getting_started_action.triggered.connect(self.show_getting_started)
+        self.settings_guide_action = help_menu.addAction("Settings Guide")
+        self.settings_guide_action.triggered.connect(self.show_settings_guide)
         self.system_check_action = help_menu.addAction("System Check")
         self.system_check_action.triggered.connect(self.show_system_check)
+        self.about_action = help_menu.addAction("About")
+        self.about_action.triggered.connect(self.show_about)
 
         self.open_output_button = QPushButton("Open Output Folder")
         self.open_output_button.setEnabled(False)
@@ -106,6 +124,19 @@ class ApplicationWindow(MainWindow):
             return value
         return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
+    def _migrate_table_preferences(self) -> None:
+        analysis_mode = str(self._settings.value(AI_ANALYSIS_MODE_SETTING, "auto"))
+        table_enabled = self._setting_bool(AI_TABLE_ANALYSIS_SETTING, False)
+        if analysis_mode == "accurate_tables":
+            analysis_mode = "accurate"
+            table_enabled = True
+        elif self._settings.contains(DOCLING_TABLES_SETTING):
+            table_enabled = self._setting_bool(DOCLING_TABLES_SETTING, table_enabled)
+        self._settings.setValue(AI_ANALYSIS_MODE_SETTING, analysis_mode)
+        self._settings.setValue(AI_TABLE_ANALYSIS_SETTING, table_enabled)
+        self._settings.setValue(DOCLING_TABLES_SETTING, table_enabled)
+        self._settings.sync()
+
     def _add_docling_performance_controls(self) -> None:
         self.docling_ocr_checkbox = QCheckBox("OCR scanned pages in AI output")
         self.docling_ocr_checkbox.setChecked(
@@ -116,7 +147,7 @@ class ApplicationWindow(MainWindow):
         )
         self.table_structure_checkbox = QCheckBox("Analyze table structure")
         self.table_structure_checkbox.setChecked(
-            self._setting_bool(DOCLING_TABLES_SETTING, False)
+            self._setting_bool(AI_TABLE_ANALYSIS_SETTING, False)
         )
         self.table_structure_checkbox.setToolTip(
             "Improves complex tables but adds substantial CPU processing time."
@@ -134,12 +165,6 @@ class ApplicationWindow(MainWindow):
             self.cpu_only_checkbox,
         ):
             checkbox.toggled.connect(self._save_processing_preferences)
-
-        options_row = QHBoxLayout()
-        options_row.addWidget(self.docling_ocr_checkbox)
-        options_row.addWidget(self.table_structure_checkbox)
-        options_row.addWidget(self.cpu_only_checkbox)
-        options_row.addStretch()
 
         self.ocr_mode_combo = QComboBox()
         self.ocr_mode_combo.addItem("Smart legal document (recommended)", "smart")
@@ -166,11 +191,9 @@ class ApplicationWindow(MainWindow):
         self.ai_analysis_mode_combo.addItem("Auto (recommended)", "auto")
         self.ai_analysis_mode_combo.addItem("Fast Markdown", "fast")
         self.ai_analysis_mode_combo.addItem("Accurate Markdown", "accurate")
-        self.ai_analysis_mode_combo.addItem("Accurate with tables", "accurate_tables")
         self.ai_analysis_mode_combo.setToolTip(
-            "Auto picks Fast for searchable text without complex table analysis. "
-            "Fast is quickest plain-text markdown. Accurate preserves richer layout. "
-            "Accurate with tables is slowest but improves table structure."
+            "Auto picks a mode based on source content. "
+            "Fast is quickest plain-text markdown. Accurate preserves richer layout."
         )
         saved_analysis_mode = str(self._settings.value(AI_ANALYSIS_MODE_SETTING, "auto"))
         for index in range(self.ai_analysis_mode_combo.count()):
@@ -178,6 +201,9 @@ class ApplicationWindow(MainWindow):
                 self.ai_analysis_mode_combo.setCurrentIndex(index)
                 break
         self.ai_analysis_mode_combo.currentIndexChanged.connect(self._save_processing_preferences)
+        self.ai_analysis_mode_combo.currentIndexChanged.connect(
+            self._update_table_analysis_availability
+        )
         ai_mode_row = QHBoxLayout()
         ai_mode_row.addWidget(QLabel("AI analysis mode:"))
         ai_mode_row.addWidget(self.ai_analysis_mode_combo)
@@ -203,6 +229,11 @@ class ApplicationWindow(MainWindow):
         profile_row.addStretch()
 
         tesseract_layout = QVBoxLayout()
+        tesseract_help = QLabel(
+            "Tesseract recognizes text in scanned pages and OCRmyPDF creates searchable PDFs."
+        )
+        tesseract_help.setWordWrap(True)
+        tesseract_layout.addWidget(tesseract_help)
         tesseract_row = QHBoxLayout()
         self.tesseract_profile_combo = QComboBox()
         self.tesseract_profile_combo.currentIndexChanged.connect(self._on_tesseract_profile_changed)
@@ -218,16 +249,80 @@ class ApplicationWindow(MainWindow):
         self.tesseract_languages_list.itemSelectionChanged.connect(self._save_selected_languages)
         tesseract_layout.addLayout(tesseract_row)
         tesseract_layout.addWidget(self.tesseract_languages_list)
-        output_parent = self.markdown_checkbox.parentWidget()
-        if output_parent is not None and output_parent.layout() is not None:
-            output_parent.layout().addLayout(options_row)
-            output_parent.layout().addLayout(ocr_mode_row)
-            output_parent.layout().addLayout(ai_mode_row)
-            output_parent.layout().addLayout(profile_row)
-            output_parent.layout().addLayout(tesseract_layout)
+        searchable_group_layout = QVBoxLayout()
+        searchable_group_layout.addLayout(ocr_mode_row)
+        searchable_group_layout.addLayout(tesseract_layout)
+        self.searchable_pdf_group = QGroupBox("Searchable PDF / OCR")
+        self.searchable_pdf_group.setLayout(searchable_group_layout)
+        self.searchable_pdf_group.setToolTip(
+            "Used only for Searchable PDF output."
+        )
+
+        ai_options_row = QHBoxLayout()
+        ai_options_row.addWidget(self.docling_ocr_checkbox)
+        ai_options_row.addWidget(self.table_structure_checkbox)
+        ai_options_row.addStretch()
+        ai_help = QLabel(
+            "Docling OCR here affects Markdown/JSON outputs only."
+        )
+        ai_help.setWordWrap(True)
+        markdown_group_layout = QVBoxLayout()
+        markdown_group_layout.addLayout(ai_mode_row)
+        markdown_group_layout.addLayout(ai_options_row)
+        markdown_group_layout.addWidget(ai_help)
+        self.markdown_json_group = QGroupBox("Markdown and JSON analysis")
+        self.markdown_json_group.setLayout(markdown_group_layout)
+
+        performance_row = QHBoxLayout()
+        performance_row.addWidget(self.cpu_only_checkbox)
+        performance_row.addStretch()
+        performance_help = QLabel(
+            "CPU only is best for compatibility. Allowing auto device selection may use GPU where supported."
+        )
+        performance_help.setWordWrap(True)
+        performance_layout = QVBoxLayout()
+        performance_layout.addLayout(profile_row)
+        performance_layout.addLayout(performance_row)
+        performance_layout.addWidget(performance_help)
+        self.performance_group = QGroupBox("Performance")
+        self.performance_group.setLayout(performance_layout)
+
+        self.advanced_toggle_button = QToolButton()
+        self.advanced_toggle_button.setText("5) Advanced options")
+        self.advanced_toggle_button.setCheckable(True)
+        self.advanced_toggle_button.setChecked(
+            self._setting_bool(ADVANCED_OPTIONS_SETTING, False)
+        )
+        self.advanced_toggle_button.toggled.connect(self._set_advanced_panel_visible)
+        settings_help_button = QPushButton("Help: Settings Guide")
+        settings_help_button.setAccessibleName("Open Settings Guide")
+        settings_help_button.clicked.connect(self.show_settings_guide)
+        advanced_toggle_row = QHBoxLayout()
+        advanced_toggle_row.addWidget(self.advanced_toggle_button)
+        advanced_toggle_row.addStretch()
+        advanced_toggle_row.addWidget(settings_help_button)
+
+        self.advanced_panel = QWidget()
+        advanced_layout = QVBoxLayout()
+        advanced_layout.addWidget(self.searchable_pdf_group)
+        advanced_layout.addWidget(self.markdown_json_group)
+        advanced_layout.addWidget(self.performance_group)
+        self.advanced_panel.setLayout(advanced_layout)
+        self.advanced_panel.setVisible(self.advanced_toggle_button.isChecked())
+
+        output_layout = self.output_group.layout()
+        if output_layout is not None:
+            output_layout.addLayout(advanced_toggle_row)
+            output_layout.addWidget(self.advanced_panel)
+        self._update_table_analysis_availability()
+        self._update_advanced_relevance()
 
     def _save_processing_preferences(self) -> None:
         self._settings.setValue(DOCLING_OCR_SETTING, self.docling_ocr_checkbox.isChecked())
+        self._settings.setValue(
+            AI_TABLE_ANALYSIS_SETTING,
+            self.table_structure_checkbox.isChecked(),
+        )
         self._settings.setValue(
             DOCLING_TABLES_SETTING,
             self.table_structure_checkbox.isChecked(),
@@ -245,7 +340,40 @@ class ApplicationWindow(MainWindow):
             PROCESSING_PROFILE_SETTING,
             self.processing_profile_combo.currentData(),
         )
+        self._settings.setValue(
+            ADVANCED_OPTIONS_SETTING,
+            self.advanced_toggle_button.isChecked(),
+        )
         self._settings.sync()
+
+    def _set_advanced_panel_visible(self, visible: bool) -> None:
+        self.advanced_panel.setVisible(visible)
+        self._save_processing_preferences()
+
+    def _update_table_analysis_availability(self) -> None:
+        mode = str(self.ai_analysis_mode_combo.currentData() or "auto")
+        available = mode in {"auto", "accurate"} and self._docling_controls_allowed
+        if not available and self.table_structure_checkbox.isChecked():
+            self.table_structure_checkbox.setChecked(False)
+        self.table_structure_checkbox.setEnabled(available)
+        if available:
+            self.table_structure_checkbox.setToolTip(
+                "Improves complex tables but adds substantial CPU processing time."
+            )
+        else:
+            self.table_structure_checkbox.setToolTip(
+                "Table structure analysis is available only for Auto or Accurate mode."
+            )
+
+    def _update_advanced_relevance(self) -> None:
+        searchable_selected = self.searchable_pdf_checkbox.isChecked()
+        ai_selected = self.markdown_checkbox.isChecked() or self.json_checkbox.isChecked()
+        self.searchable_pdf_group.setEnabled(
+            searchable_selected and self.searchable_pdf_checkbox.isEnabled()
+        )
+        self.markdown_json_group.setEnabled(
+            ai_selected and self.markdown_checkbox.isEnabled() and self._docling_controls_allowed
+        )
 
     def refresh_tesseract_runtime(self) -> None:
         self._tesseract_installations = discover_tesseract_installations()
@@ -354,6 +482,7 @@ class ApplicationWindow(MainWindow):
         )
 
     def apply_output_availability(self, availability: OutputAvailability) -> None:
+        self._docling_controls_allowed = availability.docling
         self.searchable_pdf_checkbox.setEnabled(availability.searchable_pdf)
         if not availability.searchable_pdf:
             self.searchable_pdf_checkbox.setChecked(False)
@@ -381,6 +510,8 @@ class ApplicationWindow(MainWindow):
             self.cpu_only_checkbox,
         ):
             checkbox.setEnabled(availability.docling)
+        self._update_table_analysis_availability()
+        self._update_advanced_relevance()
         self.update_process_button()
 
     def apply_diagnostics(self, diagnostics: SystemDiagnostics) -> None:
@@ -419,6 +550,19 @@ class ApplicationWindow(MainWindow):
         dialog.exec()
         self.refresh_output_availability()
         self.refresh_tesseract_runtime()
+
+    def _show_help_dialog(self, title: str, body: str) -> None:
+        dialog = HelpDialog(HelpSection(title=title, body=body), self)
+        dialog.exec()
+
+    def show_getting_started(self) -> None:
+        self._show_help_dialog(GETTING_STARTED.title, GETTING_STARTED.body)
+
+    def show_settings_guide(self) -> None:
+        self._show_help_dialog(SETTINGS_GUIDE.title, SETTINGS_GUIDE.body)
+
+    def show_about(self) -> None:
+        self._show_help_dialog(ABOUT.title, ABOUT.body)
 
     def show_queue_item_details(self, item: QListWidgetItem) -> None:
         if not item.text().startswith("Failed:"):
@@ -557,9 +701,8 @@ class ApplicationWindow(MainWindow):
             item.setEnabled(enabled)
         if enabled:
             self.ai_analysis_mode_combo.setToolTip(
-                "Auto picks Fast for searchable text without complex table analysis. "
-                "Fast is quickest plain-text markdown. Accurate preserves richer layout. "
-                "Accurate with tables is slowest but improves table structure."
+                "Auto picks a mode based on source content. "
+                "Fast is quickest plain-text markdown. Accurate preserves richer layout."
             )
             return
         if self.ai_analysis_mode_combo.currentData() == "fast":

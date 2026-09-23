@@ -35,8 +35,9 @@ def test_adds_only_unique_pdf_files(qtbot, tmp_path: Path) -> None:
 
     assert window.pdf_paths == (pdf.resolve(),)
     assert window.queue.count() == 1
-    assert window.output_directory == (tmp_path / "Converted").resolve()
-    assert window.process_button.isEnabled()
+    assert window.output_directory is None
+    assert not window.process_button.isEnabled()
+    assert "choose an output folder" in window.next_step_label.text().lower()
 
 
 def test_adds_pdfs_from_folder(qtbot, tmp_path: Path) -> None:
@@ -58,6 +59,7 @@ def test_process_requires_any_output_selection(qtbot, tmp_path: Path) -> None:
     window = MainWindow()
     qtbot.addWidget(window)
     window.add_paths([str(pdf)])
+    window.set_output_directory(tmp_path / "out")
 
     window.searchable_pdf_checkbox.setChecked(False)
     assert not window.process_button.isEnabled()
@@ -158,3 +160,22 @@ def test_bottom_controls_remain_reachable_when_height_is_constrained(monkeypatch
     scrollbar.setValue(scrollbar.maximum())
     button_top = window.process_button.mapTo(scroll_area.viewport(), QPoint(0, 0)).y()
     assert button_top + window.process_button.height() <= scroll_area.viewport().height()
+
+
+def test_add_buttons_remain_inside_drop_area(qtbot) -> None:
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    assert window.add_files_button.parentWidget() is window.drop_area
+    assert window.add_folder_button.parentWidget() is window.drop_area
+
+
+def test_queue_is_bounded_when_window_is_tall(qtbot) -> None:
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.resize(1200, 1000)
+    window.show()
+    qtbot.wait(10)
+
+    assert window.queue.maximumHeight() <= 240
+    assert window.queue.height() <= 240
