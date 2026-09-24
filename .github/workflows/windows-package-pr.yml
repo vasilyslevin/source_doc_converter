@@ -43,7 +43,30 @@ jobs:
       - name: Record Qt geometry environment
         shell: pwsh
         run: |
-          python -c "import platform, os; from PySide6 import __version__ as pyside; from PySide6.QtCore import qVersion; from PySide6.QtGui import QGuiApplication, QFontMetrics; from PySide6.QtWidgets import QApplication; app = QApplication([]); screen = QGuiApplication.primaryScreen(); font = app.font(); fm = QFontMetrics(font); print(f'python={platform.python_version()}'); print(f'pyside6={pyside}'); print(f'qt={qVersion()}'); print(f'qt_platform={QGuiApplication.platformName()}'); print(f'qt_qpa_platform={os.environ.get(\"QT_QPA_PLATFORM\")}'); print(f'dpi={screen.logicalDotsPerInch() if screen else None}'); print(f'font_family={font.family()}'); print(f'font_point_size={font.pointSizeF()}'); print(f'font_metrics_height={fm.height()} avg_char_width={fm.averageCharWidth()}')"
+          $script = @'
+          import os
+          import platform
+          from PySide6 import __version__ as pyside
+          from PySide6.QtCore import qVersion
+          from PySide6.QtGui import QFontMetrics, QGuiApplication
+          from PySide6.QtWidgets import QApplication
+          
+          app = QApplication([])
+          screen = QGuiApplication.primaryScreen()
+          font = app.font()
+          fm = QFontMetrics(font)
+          
+          print(f"python={platform.python_version()}")
+          print(f"pyside6={pyside}")
+          print(f"qt={qVersion()}")
+          print(f"qt_platform={QGuiApplication.platformName()}")
+          print(f"qt_qpa_platform={os.environ.get('QT_QPA_PLATFORM')}")
+          print(f"dpi={screen.logicalDotsPerInch() if screen else None}")
+          print(f"font_family={font.family()}")
+          print(f"font_point_size={font.pointSizeF()}")
+          print(f"font_metrics_height={fm.height()} avg_char_width={fm.averageCharWidth()}")
+          '@
+          python -c $script
 
       - name: Lint
         run: ruff check .

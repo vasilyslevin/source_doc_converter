@@ -444,13 +444,21 @@ class ApplicationWindow(MainWindow):
             target_width >= self._ADVANCED_TWO_COLUMN_THRESHOLD
             and effective_width >= needed_for_two_columns
         )
-        if not force and self._advanced_two_column == two_column:
+        if not force and self._advanced_two_column == two_column and not two_column:
             return
+        self._set_advanced_panel_columns(two_column)
+
+        if two_column:
+            viewport_width = self.content_scroll.viewport().width()
+            content_min_width = self.content_scroll.widget().minimumSizeHint().width()
+            if viewport_width > 0 and content_min_width > viewport_width:
+                two_column = False
+                self._set_advanced_panel_columns(False)
         self._advanced_two_column = two_column
 
+    def _set_advanced_panel_columns(self, two_column: bool) -> None:
         while self._advanced_layout.count():
             self._advanced_layout.takeAt(0)
-
         if two_column:
             self._advanced_layout.addWidget(self.searchable_pdf_group, 0, 0, 2, 1)
             self._advanced_layout.addWidget(self.markdown_json_group, 0, 1)
