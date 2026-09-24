@@ -123,7 +123,7 @@ class SystemCheckDialog(QDialog):
             1, QHeaderView.ResizeMode.Interactive
         )
         self.component_table.horizontalHeader().setSectionResizeMode(
-            2, QHeaderView.ResizeMode.Interactive
+            2, QHeaderView.ResizeMode.Stretch
         )
         self.component_table.setColumnWidth(0, 150)
         self.component_table.setColumnWidth(1, 120)
@@ -634,7 +634,7 @@ class SystemCheckDialog(QDialog):
         first = self.component_table.columnWidth(0)
         second = self.component_table.columnWidth(1)
         details_width = max(120, min(520, viewport_width - first - second - 44))
-        self.component_table.setColumnWidth(2, details_width)
+        self.component_table.horizontalHeader().resizeSection(2, details_width)
 
     @staticmethod
     def _wrap_unbroken_segments(text: str, *, chunk_size: int = 24) -> str:
