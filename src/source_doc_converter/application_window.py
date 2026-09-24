@@ -429,10 +429,15 @@ class ApplicationWindow(MainWindow):
         spacing = self._advanced_layout.horizontalSpacing()
         margins = self._advanced_layout.contentsMargins()
         effective_width = target_width - margins.left() - margins.right()
-        left_min = self.searchable_pdf_group.minimumSizeHint().width()
+        left_min = max(
+            self.searchable_pdf_group.minimumSizeHint().width(),
+            self.searchable_pdf_group.sizeHint().width(),
+        )
         right_min = max(
             self.markdown_json_group.minimumSizeHint().width(),
+            self.markdown_json_group.sizeHint().width(),
             self.performance_group.minimumSizeHint().width(),
+            self.performance_group.sizeHint().width(),
         )
         needed_for_two_columns = left_min + right_min + spacing
         two_column = (

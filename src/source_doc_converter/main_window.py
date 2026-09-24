@@ -266,7 +266,7 @@ class MainWindow(QMainWindow):
             self._content_layout.takeAt(0)
 
         if use_wide_layout:
-            self.queue.setMaximumHeight(176 if compact_queue else 210)
+            self.queue.setMaximumHeight(136 if compact_queue else 210)
             self._content_layout.addWidget(self.drop_area, 0, 0, 1, 2)
             self._content_layout.addWidget(self.queue_group, 1, 0)
             self._content_layout.addWidget(self.output_group, 1, 1)

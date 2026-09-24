@@ -234,8 +234,24 @@ def test_system_check_long_unbroken_path_does_not_force_width_past_cap(monkeypat
     dialog.show()
     qtbot.wait(10)
 
+    diagnostics = {
+        "dialog": (dialog.width(), dialog.height()),
+        "viewport": (
+            dialog.content_scroll.viewport().width(),
+            dialog.content_scroll.viewport().height(),
+        ),
+        "scroll": (
+            dialog.content_scroll.horizontalScrollBar().maximum(),
+            dialog.content_scroll.verticalScrollBar().maximum(),
+        ),
+        "content_size_hint": (
+            dialog.content_scroll.widget().sizeHint().width(),
+            dialog.content_scroll.widget().sizeHint().height(),
+        ),
+        "table_columns": [dialog.component_table.columnWidth(i) for i in range(3)],
+    }
     assert dialog.width() <= 640
-    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
+    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0, diagnostics
     assert dialog.setup_dependencies_button.geometry().x() == dialog.cancel_setup_button.geometry().x()
     assert dialog.choose_model_button.geometry().x() == dialog.reset_model_button.geometry().x()
     assert dialog.download_model_button.geometry().x() == dialog.cancel_download_button.geometry().x()

@@ -670,8 +670,29 @@ def test_advanced_layout_fits_large_viewport_without_outer_scrollbars(
     window.show()
     qtbot.wait(20)
 
-    assert window.content_scroll.horizontalScrollBar().maximum() == 0
-    assert window.content_scroll.verticalScrollBar().maximum() == 0
+    diagnostics = {
+        "window": (window.width(), window.height()),
+        "viewport": (
+            window.content_scroll.viewport().width(),
+            window.content_scroll.viewport().height(),
+        ),
+        "scroll": (
+            window.content_scroll.horizontalScrollBar().maximum(),
+            window.content_scroll.verticalScrollBar().maximum(),
+        ),
+        "content_size_hint": (
+            window.content_scroll.widget().sizeHint().width(),
+            window.content_scroll.widget().sizeHint().height(),
+        ),
+        "drop": (window.drop_area.height(), window.drop_area.sizeHint().height()),
+        "queue_group": (window.queue_group.height(), window.queue_group.sizeHint().height()),
+        "queue": (window.queue.height(), window.queue.maximumHeight()),
+        "output_group": (window.output_group.height(), window.output_group.sizeHint().height()),
+        "actions_group": (window.actions_group.height(), window.actions_group.sizeHint().height()),
+        "advanced_two_column": window._advanced_two_column,
+    }
+    assert window.content_scroll.horizontalScrollBar().maximum() == 0, diagnostics
+    assert window.content_scroll.verticalScrollBar().maximum() == 0, diagnostics
     needed_for_two_columns = (
         window.searchable_pdf_group.minimumSizeHint().width()
         + max(
@@ -701,7 +722,20 @@ def test_advanced_layout_keeps_controls_reachable_with_larger_font(monkeypatch, 
     window.show()
     qtbot.wait(20)
 
-    assert window.content_scroll.horizontalScrollBar().maximum() == 0
+    diagnostics = {
+        "window": (window.width(), window.height()),
+        "viewport": (
+            window.content_scroll.viewport().width(),
+            window.content_scroll.viewport().height(),
+        ),
+        "scroll": (
+            window.content_scroll.horizontalScrollBar().maximum(),
+            window.content_scroll.verticalScrollBar().maximum(),
+        ),
+        "output_width": window.output_group.contentsRect().width(),
+        "advanced_two_column": window._advanced_two_column,
+    }
+    assert window.content_scroll.horizontalScrollBar().maximum() == 0, diagnostics
     if window._advanced_two_column:
         needed_for_two_columns = (
             window.searchable_pdf_group.minimumSizeHint().width()
