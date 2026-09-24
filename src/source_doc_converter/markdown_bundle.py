@@ -6,7 +6,12 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from threading import Event
 
-from source_doc_converter.ocr_pipeline import OcrCancelledError, OcrError, OutputCollisionError
+from source_doc_converter.ocr_pipeline import (
+    OcrCancelledError,
+    OcrError,
+    OutputCollisionError,
+    OutputPathTooLongError,
+)
 
 DEFAULT_BUNDLE_STEM = "combined_markdown"
 _MAX_BUNDLE_FILENAME_CHARS = 120
@@ -139,21 +144,30 @@ def _shortened_bundle_filename(
     output_directory: Path | None,
 ) -> str:
     digest = sha1(stem.encode("utf-8")).hexdigest()[:10]
-    suffix = f"_{source_count}src_{digest}"
-    max_name_chars = _MAX_BUNDLE_FILENAME_CHARS - len(".md")
-    max_stem_chars = max(1, max_name_chars - len(suffix))
+    discriminator = f"{source_count}src_{digest}"
+    minimum_filename = f"{discriminator}.md"
+    available_name_chars = _MAX_BUNDLE_FILENAME_CHARS
     if output_directory is not None:
-        max_path_stem_chars = max(
-            1,
+        available_name_chars = min(
+            available_name_chars,
             _MAX_BUNDLE_PATH_CHARS
             - len(str(output_directory))
             - 1
-            - len(".md")
-            - len(suffix),
         )
-        max_stem_chars = min(max_stem_chars, max_path_stem_chars)
-    trimmed_stem = stem[:max_stem_chars].rstrip("._-") or DEFAULT_BUNDLE_STEM
-    return f"{trimmed_stem}{suffix}.md"
+    if available_name_chars < len(minimum_filename):
+        raise OutputPathTooLongError(
+            "Output path is too long to create a safe combined Markdown bundle filename. "
+            "Choose a shorter output folder."
+        )
+
+    prefix_budget = available_name_chars - len(minimum_filename)
+    if prefix_budget < 2:
+        return minimum_filename
+
+    trimmed_stem = stem[: prefix_budget - 1].rstrip("._-")
+    if not trimmed_stem:
+        return minimum_filename
+    return f"{trimmed_stem}_{discriminator}.md"
 
 
 def _safe_source_label(filename: str) -> str:

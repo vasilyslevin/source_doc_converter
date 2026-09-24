@@ -74,10 +74,18 @@ class ProcessingWorker(QObject):
         omitted_markdown_sources: list[str] = []
         bundle_destination: Path | None = None
         if self._create_markdown and self._create_markdown_bundle:
-            bundle_destination = bundle_destination_for_inputs(
-                self._input_paths,
-                self._output_directory,
-            )
+            try:
+                bundle_destination = bundle_destination_for_inputs(
+                    self._input_paths,
+                    self._output_directory,
+                )
+            except OcrError as error:
+                message = str(error)
+                self.stage_changed.emit("Combined Markdown bundle failed: " + message)
+                for input_path in self._input_paths:
+                    self.file_failed.emit(str(input_path), message)
+                self.finished.emit(False, 0, total)
+                return
             if bundle_destination.exists():
                 message = f"Output already exists and will not be overwritten: {bundle_destination}"
                 self.stage_changed.emit("Combined Markdown bundle failed: " + message)

@@ -52,6 +52,10 @@ class OutputCollisionError(OcrError):
     """Raised when one or more output files already exist."""
 
 
+class OutputPathTooLongError(OcrError):
+    """Raised when output path constraints cannot be satisfied safely."""
+
+
 @dataclass(frozen=True)
 class OcrResult:
     input_path: Path

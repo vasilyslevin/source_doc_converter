@@ -8,7 +8,12 @@ from source_doc_converter.markdown_bundle import (
     bundle_filename_for_inputs,
     create_markdown_bundle,
 )
-from source_doc_converter.ocr_pipeline import OcrCancelledError, OcrError, OutputCollisionError
+from source_doc_converter.ocr_pipeline import (
+    OcrCancelledError,
+    OcrError,
+    OutputCollisionError,
+    OutputPathTooLongError,
+)
 
 
 def test_bundle_preserves_queue_order_and_headings(tmp_path: Path) -> None:
@@ -51,17 +56,27 @@ def test_bundle_filename_disambiguates_duplicates_and_empty_stems() -> None:
     assert bundle_filename_for_inputs(inputs) == "pdf_source_source_2_file_con.md"
 
 
-def test_bundle_filename_shortens_long_batches_with_stable_suffix(tmp_path: Path) -> None:
+def test_bundle_filename_shortens_long_batches_with_stable_suffix() -> None:
     inputs = tuple(Path(f"/tmp/{'x' * 30}_{index}.pdf") for index in range(15))
-    output_directory = tmp_path / ("deep" * 30)
-    output_directory.mkdir(parents=True)
+    output_directory = Path("/tmp/source-doc-converter-tests")
 
     filename = bundle_filename_for_inputs(inputs, output_directory)
+    full_path = output_directory / filename
 
     assert filename.endswith(".md")
     assert "_15src_" in filename
     assert len(filename) <= 120
-    assert len(str(output_directory / filename)) <= 240
+    assert len(str(full_path)) <= 240
+
+
+def test_bundle_filename_raises_for_infeasible_output_path_budget(tmp_path: Path) -> None:
+    inputs = tuple(Path(f"/tmp/{'x' * 30}_{index}.pdf") for index in range(15))
+    output_directory = tmp_path / ("deep" * 60)
+    full_path_guess = output_directory / "placeholder.md"
+
+    assert len(str(full_path_guess)) > 240
+    with pytest.raises(OutputPathTooLongError, match="Choose a shorter output folder"):
+        bundle_filename_for_inputs(inputs, output_directory)
 
 
 def test_bundle_destination_is_predictable_before_processing(tmp_path: Path) -> None:

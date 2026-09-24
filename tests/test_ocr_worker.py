@@ -414,3 +414,45 @@ def test_worker_repeat_run_stops_before_rewriting_individual_outputs(
     second_run.run()
 
     assert docling_calls == []
+
+
+def test_worker_preflights_path_too_long_before_processing(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "single.pdf"
+    source.write_bytes(b"%PDF-1.4\n")
+    output_directory = tmp_path / ("deep" * 60)
+    called = {"docling": 0}
+    failures = []
+    stages = []
+    summaries = []
+
+    def fake_run_docling(*args, **kwargs):
+        called["docling"] += 1
+        raise AssertionError("docling should not run when bundle filename is infeasible")
+
+    monkeypatch.setattr(ocr_worker, "run_docling", fake_run_docling)
+    worker = ProcessingWorker(
+        (source,),
+        output_directory,
+        create_searchable_pdf=False,
+        create_markdown=True,
+        create_json=False,
+        create_markdown_bundle=True,
+    )
+    worker.stage_changed.connect(stages.append)
+    worker.file_failed.connect(lambda source_path, error: failures.append((source_path, error)))
+    worker.finished.connect(lambda cancelled, ok, failed: summaries.append((cancelled, ok, failed)))
+
+    worker.run()
+
+    assert called["docling"] == 0
+    assert any("Choose a shorter output folder" in stage for stage in stages)
+    assert failures == [
+        (
+            str(source),
+            (
+                "Output path is too long to create a safe combined Markdown bundle filename. "
+                "Choose a shorter output folder."
+            ),
+        )
+    ]
+    assert summaries == [(False, 0, 1)]
