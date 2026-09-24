@@ -626,7 +626,7 @@ class SystemCheckDialog(QDialog):
             return
         first = self.component_table.columnWidth(0)
         second = self.component_table.columnWidth(1)
-        details_width = max(180, min(520, viewport_width - first - second - 8))
+        details_width = max(160, min(520, viewport_width - first - second - 44))
         self.component_table.setColumnWidth(2, details_width)
 
     @staticmethod
