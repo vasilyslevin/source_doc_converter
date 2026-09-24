@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PySide6.QtCore import QRect, Qt, QUrl
+from PySide6.QtCore import QPoint, QRect, Qt, QUrl
 from PySide6.QtWidgets import QMessageBox
 
 from source_doc_converter.system_check_dialog import (
@@ -32,6 +32,24 @@ def sample_diagnostics() -> SystemDiagnostics:
         package_flavor="Lite",
         source_commit_sha="abc1234",
     )
+
+
+def _assert_visible_in_scroll_viewport(dialog: SystemCheckDialog, control) -> None:
+    viewport = dialog.content_scroll.viewport()
+    position = control.mapTo(viewport, QPoint(0, 0))
+    assert position.x() >= 0
+    assert position.y() >= 0
+    assert position.x() + control.width() <= viewport.width()
+    assert position.y() + control.height() <= viewport.height()
+
+
+def _scroll_into_view_and_assert_visible(dialog: SystemCheckDialog, control, qtbot) -> None:
+    if not control.isVisible():
+        return
+    dialog.content_scroll.ensureWidgetVisible(control, 0, 0)
+    qtbot.wait(10)
+    _assert_visible_in_scroll_viewport(dialog, control)
+    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
 
 
 def test_dialog_displays_component_status(qtbot) -> None:
@@ -225,4 +243,216 @@ def test_system_check_long_unbroken_path_does_not_force_width_past_cap(monkeypat
     dialog.show()
     qtbot.wait(10)
 
+    diagnostics = {
+        "dialog": (dialog.width(), dialog.height()),
+        "viewport": (
+            dialog.content_scroll.viewport().width(),
+            dialog.content_scroll.viewport().height(),
+        ),
+        "scroll": (
+            dialog.content_scroll.horizontalScrollBar().maximum(),
+            dialog.content_scroll.verticalScrollBar().maximum(),
+        ),
+        "content_size_hint": (
+            dialog.content_scroll.widget().sizeHint().width(),
+            dialog.content_scroll.widget().sizeHint().height(),
+        ),
+        "table_columns": [dialog.component_table.columnWidth(i) for i in range(3)],
+    }
     assert dialog.width() <= 640
+    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0, diagnostics
+    details_item = dialog.component_table.item(0, 2)
+    assert details_item is not None
+    assert "\u200b" in details_item.text()
+    assert long_token in details_item.toolTip()
+    for control in (
+        dialog.setup_dependencies_button,
+        dialog.cancel_setup_button,
+        dialog.choose_model_button,
+        dialog.reset_model_button,
+        dialog.download_model_button,
+        dialog.cancel_download_button,
+    ):
+        _scroll_into_view_and_assert_visible(dialog, control, qtbot)
+
+
+def test_system_check_long_unbroken_path_large_font_keeps_actions_reachable(monkeypatch, qtbot) -> None:
+    monkeypatch.setattr(
+        "source_doc_converter.ui_geometry.available_geometry_for_widget",
+        lambda _: QRect(0, 0, 640, 480),
+    )
+    long_token = "C:\\" + ("verylongsegment" * 30)
+
+    def diagnostics() -> SystemDiagnostics:
+        return SystemDiagnostics(
+            application_version="0.1.0a0",
+            operating_system="Windows",
+            operating_system_version="11",
+            architecture="x86_64",
+            python_version="3.12.0",
+            pyside_version="6.9.0",
+            components=(
+                ComponentStatus("ocrmypdf", "OCRmyPDF", False, error=long_token),
+                ComponentStatus("tesseract", "Tesseract OCR", True, "5.5.0"),
+                ComponentStatus(
+                    "ghostscript",
+                    "Ghostscript",
+                    False,
+                    details=(
+                        "Optional — not installed. Standard searchable PDF output works without Ghostscript.",
+                    ),
+                ),
+                ComponentStatus("docling", "Docling", True, "2.50.0"),
+            ),
+        )
+
+    dialog = SystemCheckDialog(diagnostics_provider=diagnostics)
+    qtbot.addWidget(dialog)
+    dialog.setStyleSheet("QWidget { font-size: 14pt; }")
+    dialog.show()
+    qtbot.wait(10)
+
+    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
+    for control in (
+        dialog.setup_dependencies_button,
+        dialog.ghostscript_button,
+        dialog.cancel_setup_button,
+        dialog.choose_model_button,
+        dialog.reset_model_button,
+        dialog.download_model_button,
+        dialog.cancel_download_button,
+    ):
+        _scroll_into_view_and_assert_visible(dialog, control, qtbot)
+
+
+def test_system_check_summary_actions_fit_large_viewport_without_outer_scroll(
+    monkeypatch, qtbot
+) -> None:
+    monkeypatch.setattr(
+        "source_doc_converter.ui_geometry.available_geometry_for_widget",
+        lambda _: QRect(0, 0, 1800, 1200),
+    )
+    dialog = SystemCheckDialog(diagnostics_provider=sample_diagnostics)
+    qtbot.addWidget(dialog)
+    dialog.resize(1400, 900)
+    dialog.show()
+    qtbot.wait(20)
+
+    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
+    assert dialog.content_scroll.verticalScrollBar().maximum() == 0
+    for control in (
+        dialog.activity_status_label,
+        dialog.details_button,
+        dialog.component_table,
+        dialog.setup_dependencies_button,
+        dialog.choose_model_button,
+    ):
+        _assert_visible_in_scroll_viewport(dialog, control)
+
+
+def test_system_check_large_font_keeps_primary_actions_reachable(monkeypatch, qtbot) -> None:
+    monkeypatch.setattr(
+        "source_doc_converter.ui_geometry.available_geometry_for_widget",
+        lambda _: QRect(0, 0, 1800, 1200),
+    )
+    dialog = SystemCheckDialog(diagnostics_provider=sample_diagnostics)
+    qtbot.addWidget(dialog)
+    dialog.setStyleSheet("QWidget { font-size: 14pt; }")
+    dialog.resize(1400, 900)
+    dialog.show()
+    qtbot.wait(20)
+
+    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
+    dialog.content_scroll.verticalScrollBar().setValue(
+        dialog.content_scroll.verticalScrollBar().maximum()
+    )
+    close_position = dialog.close_button.mapTo(dialog, QPoint(0, 0))
+    assert close_position.x() >= 0
+    assert close_position.y() >= 0
+    assert close_position.x() + dialog.close_button.width() <= dialog.width()
+    assert close_position.y() + dialog.close_button.height() <= dialog.height()
+
+
+def test_system_check_resize_large_small_large_clears_stale_overflow(monkeypatch, qtbot) -> None:
+    monkeypatch.setattr(
+        "source_doc_converter.ui_geometry.available_geometry_for_widget",
+        lambda _: QRect(0, 0, 1800, 1200),
+    )
+    dialog = SystemCheckDialog(diagnostics_provider=sample_diagnostics)
+    qtbot.addWidget(dialog)
+    dialog.resize(1400, 900)
+    dialog.show()
+    qtbot.wait(20)
+    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
+    assert dialog.content_scroll.verticalScrollBar().maximum() == 0
+
+    dialog.resize(640, 480)
+    qtbot.wait(20)
+    assert dialog.content_scroll.verticalScrollBar().maximum() > 0
+    for control in (
+        dialog.setup_dependencies_button,
+        dialog.cancel_setup_button,
+        dialog.choose_model_button,
+        dialog.reset_model_button,
+        dialog.download_model_button,
+        dialog.cancel_download_button,
+    ):
+        _scroll_into_view_and_assert_visible(dialog, control, qtbot)
+
+    dialog.resize(1400, 900)
+    qtbot.wait(20)
+    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
+    assert dialog.content_scroll.verticalScrollBar().maximum() == 0
+
+    dialog.resize(640, 480)
+    qtbot.wait(20)
+    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
+    assert dialog.content_scroll.verticalScrollBar().maximum() > 0
+    for control in (
+        dialog.setup_dependencies_button,
+        dialog.cancel_setup_button,
+        dialog.choose_model_button,
+        dialog.reset_model_button,
+        dialog.download_model_button,
+        dialog.cancel_download_button,
+    ):
+        _scroll_into_view_and_assert_visible(dialog, control, qtbot)
+
+
+def test_system_check_component_columns_recover_after_resize_cycle(monkeypatch, qtbot) -> None:
+    monkeypatch.setattr(
+        "source_doc_converter.ui_geometry.available_geometry_for_widget",
+        lambda _: QRect(0, 0, 1800, 1200),
+    )
+    dialog = SystemCheckDialog(diagnostics_provider=sample_diagnostics)
+    qtbot.addWidget(dialog)
+    dialog.resize(1400, 900)
+    dialog.show()
+    qtbot.wait(20)
+
+    initial = (dialog.component_table.columnWidth(0), dialog.component_table.columnWidth(1))
+    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
+
+    dialog.resize(640, 480)
+    qtbot.wait(20)
+    dialog.component_table.horizontalHeader().resizeSection(0, 100)
+    dialog.component_table.horizontalHeader().resizeSection(1, 84)
+    narrow = (dialog.component_table.columnWidth(0), dialog.component_table.columnWidth(1))
+    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
+
+    dialog.resize(1400, 900)
+    qtbot.wait(20)
+    wide = (dialog.component_table.columnWidth(0), dialog.component_table.columnWidth(1))
+    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
+
+    dialog.resize(640, 480)
+    qtbot.wait(20)
+    narrow_again = (dialog.component_table.columnWidth(0), dialog.component_table.columnWidth(1))
+    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
+
+    assert wide[0] >= initial[0]
+    assert wide[1] >= initial[1]
+    assert wide[0] > narrow[0]
+    assert wide[1] > narrow[1]
+    assert narrow_again[0] <= wide[0]
+    assert narrow_again[1] <= wide[1]

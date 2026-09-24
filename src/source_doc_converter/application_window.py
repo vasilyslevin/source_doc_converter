@@ -2,11 +2,12 @@ from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import QElapsedTimer, QSettings, QTimer, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QDesktopServices, QResizeEvent, QShowEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFileDialog,
+    QGridLayout,
     QGroupBox,
     QLabel,
     QListWidget,
@@ -73,6 +74,8 @@ def format_elapsed(milliseconds: int) -> str:
 
 
 class ApplicationWindow(MainWindow):
+    _ADVANCED_TWO_COLUMN_THRESHOLD = 1100
+
     def __init__(
         self,
         *,
@@ -264,6 +267,9 @@ class ApplicationWindow(MainWindow):
         tesseract_row.addLayout(tesseract_actions_row)
         self.tesseract_languages_list = QListWidget()
         self.tesseract_languages_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        self.tesseract_languages_list.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
+        self.tesseract_languages_list.setMinimumHeight(72)
+        self.tesseract_languages_list.setMaximumHeight(104)
         self.tesseract_languages_list.itemSelectionChanged.connect(self._save_selected_languages)
         tesseract_layout.addLayout(tesseract_row)
         tesseract_layout.addWidget(self.tesseract_languages_list)
@@ -346,12 +352,14 @@ class ApplicationWindow(MainWindow):
         advanced_toggle_row.addWidget(settings_help_button)
 
         self.advanced_panel = QWidget()
-        advanced_layout = QVBoxLayout()
-        advanced_layout.addWidget(self.searchable_pdf_group)
-        advanced_layout.addWidget(self.markdown_json_group)
-        advanced_layout.addWidget(self.performance_group)
-        self.advanced_panel.setLayout(advanced_layout)
+        self._advanced_layout = QGridLayout()
+        self._advanced_layout.setContentsMargins(0, 0, 0, 0)
+        self._advanced_layout.setHorizontalSpacing(10)
+        self._advanced_layout.setVerticalSpacing(8)
+        self.advanced_panel.setLayout(self._advanced_layout)
+        self._advanced_two_column: bool | None = None
         self.advanced_panel.setVisible(self.advanced_toggle_button.isChecked())
+        self._arrange_advanced_panel()
 
         output_layout = self.output_group.layout()
         if output_layout is not None:
@@ -404,7 +412,71 @@ class ApplicationWindow(MainWindow):
 
     def _set_advanced_panel_visible(self, visible: bool) -> None:
         self.advanced_panel.setVisible(visible)
+        self._arrange_primary_sections()
+        self._arrange_advanced_panel(force=True)
         self._save_processing_preferences()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._arrange_advanced_panel()
+
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        self._arrange_advanced_panel(force=True)
+
+    def _arrange_advanced_panel(self, *, force: bool = False) -> None:
+        target_width = self.output_group.contentsRect().width() or self.content_scroll.viewport().width()
+        spacing = self._advanced_layout.horizontalSpacing()
+        margins = self._advanced_layout.contentsMargins()
+        effective_width = target_width - margins.left() - margins.right()
+        left_min = max(
+            self.searchable_pdf_group.minimumSizeHint().width(),
+            self.searchable_pdf_group.sizeHint().width(),
+        )
+        right_min = max(
+            self.markdown_json_group.minimumSizeHint().width(),
+            self.markdown_json_group.sizeHint().width(),
+            self.performance_group.minimumSizeHint().width(),
+            self.performance_group.sizeHint().width(),
+        )
+        needed_for_two_columns = left_min + right_min + spacing
+        viewport_width = self.content_scroll.viewport().width() or self.width()
+        left_column_width = self._wide_left_column.minimumSizeHint().width()
+        main_spacing = self._content_layout.horizontalSpacing()
+        main_margins = self._content_layout.contentsMargins()
+        available_for_output = (
+            viewport_width
+            - left_column_width
+            - main_spacing
+            - main_margins.left()
+            - main_margins.right()
+        )
+        two_column = (
+            target_width >= self._ADVANCED_TWO_COLUMN_THRESHOLD
+            and available_for_output >= needed_for_two_columns
+            and effective_width >= needed_for_two_columns
+        )
+        if not force and self._advanced_two_column == two_column:
+            return
+        self._advanced_two_column = two_column
+
+        while self._advanced_layout.count():
+            self._advanced_layout.takeAt(0)
+
+        if two_column:
+            self._advanced_layout.addWidget(self.searchable_pdf_group, 0, 0, 2, 1)
+            self._advanced_layout.addWidget(self.markdown_json_group, 0, 1)
+            self._advanced_layout.addWidget(self.performance_group, 1, 1)
+            self._advanced_layout.setColumnStretch(0, 1)
+            self._advanced_layout.setColumnStretch(1, 1)
+            self._advanced_layout.setRowStretch(2, 1)
+            return
+
+        self._advanced_layout.addWidget(self.searchable_pdf_group, 0, 0)
+        self._advanced_layout.addWidget(self.markdown_json_group, 1, 0)
+        self._advanced_layout.addWidget(self.performance_group, 2, 0)
+        self._advanced_layout.setColumnStretch(0, 1)
+        self._advanced_layout.setColumnStretch(1, 0)
 
     def _update_table_analysis_availability(self) -> None:
         mode = str(self.ai_analysis_mode_combo.currentData() or "auto")

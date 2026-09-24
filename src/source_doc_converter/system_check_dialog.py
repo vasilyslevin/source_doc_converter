@@ -1,13 +1,14 @@
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QSize, QThread, QUrl, Signal
-from PySide6.QtGui import QCloseEvent, QColor, QDesktopServices, QShowEvent
+from PySide6.QtCore import QSettings, QSize, Qt, QThread, QUrl, Signal
+from PySide6.QtGui import QCloseEvent, QColor, QDesktopServices, QResizeEvent, QShowEvent
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFileDialog,
     QFrame,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -71,6 +73,13 @@ class ActivityDetailsDialog(QDialog):
 
 class SystemCheckDialog(QDialog):
     diagnostics_updated = Signal(object)
+    _BUTTON_TWO_COLUMN_MIN_WIDTH = 560
+    _COMPONENT_COLUMN_BASE = 140
+    _STATUS_COLUMN_BASE = 120
+    _COMPONENT_COLUMN_MIN = 100
+    _STATUS_COLUMN_MIN = 84
+    _DETAILS_COLUMN_MIN = 120
+    _DETAILS_COLUMN_MAX = 520
 
     def __init__(
         self,
@@ -96,8 +105,14 @@ class SystemCheckDialog(QDialog):
 
         self.system_label = QLabel()
         self.system_label.setWordWrap(True)
+        self.system_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.system_label.setMinimumWidth(0)
         self.activity_status_label = QLabel("Status: Ready")
         self.activity_status_label.setWordWrap(True)
+        self.activity_status_label.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+        )
+        self.activity_status_label.setMinimumWidth(0)
         self.details_button = QPushButton("Show Setup Details")
         self.details_button.clicked.connect(self._details_dialog.show)
         status_row = QHBoxLayout()
@@ -108,21 +123,29 @@ class SystemCheckDialog(QDialog):
         self.component_table = QTableWidget(0, 3)
         self.component_table.setHorizontalHeaderLabels(["Component", "Status", "Details"])
         self.component_table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.ResizeToContents
+            0, QHeaderView.ResizeMode.Interactive
         )
         self.component_table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.ResizeMode.ResizeToContents
+            1, QHeaderView.ResizeMode.Interactive
         )
         self.component_table.horizontalHeader().setSectionResizeMode(
             2, QHeaderView.ResizeMode.Stretch
         )
+        self.component_table.setColumnWidth(0, 150)
+        self.component_table.setColumnWidth(1, 120)
+        self.component_table.setColumnWidth(2, 260)
         self.component_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.component_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        self.component_table.setWordWrap(True)
+        self.component_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.component_table.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.component_table.setMinimumWidth(0)
 
         self.guidance_label = QPlainTextEdit()
         self.guidance_label.setReadOnly(True)
         self.guidance_label.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self.guidance_label.setMinimumHeight(72)
+        self.guidance_label.setMaximumHeight(96)
         self.guidance_label.setPlaceholderText("No installation guidance needed.")
 
         dependency_group = QGroupBox("Guided OCR tool setup")
@@ -134,26 +157,29 @@ class SystemCheckDialog(QDialog):
         self.cancel_setup_button = QPushButton("Cancel Setup")
         self.cancel_setup_button.setEnabled(False)
         self.cancel_setup_button.clicked.connect(self.cancel_setup)
-        dependency_buttons = QHBoxLayout()
-        dependency_buttons.addWidget(self.setup_dependencies_button)
-        dependency_buttons.addWidget(self.ghostscript_button)
-        dependency_buttons.addWidget(self.cancel_setup_button)
-        dependency_buttons.addStretch()
-        dependency_layout = QVBoxLayout()
-        dependency_layout.addWidget(
-            QLabel(
-                "Installs missing OCRmyPDF/Tesseract dependencies in the background. "
-                "Uses Homebrew on macOS or winget on Windows after explicit confirmation. "
-                "Windows Full bundles OCRmyPDF and Tesseract. "
-                "Ghostscript remains optional/recommended for PDF/A and advanced post-processing."
-            )
+        self._dependency_buttons_layout = QGridLayout()
+        self._dependency_buttons_layout.setHorizontalSpacing(8)
+        self._dependency_buttons_layout.setVerticalSpacing(6)
+        dependency_copy = QLabel(
+            "Installs missing OCRmyPDF/Tesseract dependencies in the background. "
+            "Uses Homebrew on macOS or winget on Windows after explicit confirmation. "
+            "Windows Full bundles OCRmyPDF and Tesseract. "
+            "Ghostscript remains optional/recommended for PDF/A and advanced post-processing."
         )
-        dependency_layout.addLayout(dependency_buttons)
+        dependency_copy.setWordWrap(True)
+        dependency_copy.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        dependency_copy.setMinimumWidth(0)
+        dependency_layout = QVBoxLayout()
+        dependency_layout.addWidget(dependency_copy)
+        dependency_layout.addLayout(self._dependency_buttons_layout)
         dependency_group.setLayout(dependency_layout)
+        dependency_group.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
 
         model_group = QGroupBox("Local AI models")
         self.model_status_label = QLabel()
         self.model_status_label.setWordWrap(True)
+        self.model_status_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.model_status_label.setMinimumWidth(0)
         self.choose_model_button = QPushButton("Choose Model Folder")
         self.choose_model_button.clicked.connect(self.choose_model_directory)
         self.reset_model_button = QPushButton("Reset to Default Folder")
@@ -163,16 +189,14 @@ class SystemCheckDialog(QDialog):
         self.cancel_download_button = QPushButton("Cancel Download")
         self.cancel_download_button.setEnabled(False)
         self.cancel_download_button.clicked.connect(self.cancel_model_download)
-        model_buttons = QHBoxLayout()
-        model_buttons.addWidget(self.choose_model_button)
-        model_buttons.addWidget(self.reset_model_button)
-        model_buttons.addWidget(self.download_model_button)
-        model_buttons.addWidget(self.cancel_download_button)
-        model_buttons.addStretch()
+        self._model_buttons_layout = QGridLayout()
+        self._model_buttons_layout.setHorizontalSpacing(8)
+        self._model_buttons_layout.setVerticalSpacing(6)
         model_layout = QVBoxLayout()
         model_layout.addWidget(self.model_status_label)
-        model_layout.addLayout(model_buttons)
+        model_layout.addLayout(self._model_buttons_layout)
         model_group.setLayout(model_layout)
+        model_group.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
 
         self.refresh_button = QPushButton("Refresh")
         self.refresh_button.clicked.connect(self.refresh)
@@ -188,6 +212,8 @@ class SystemCheckDialog(QDialog):
         buttons.addWidget(self.close_button)
 
         content_layout = QVBoxLayout()
+        content_layout.setContentsMargins(8, 8, 8, 8)
+        content_layout.setSpacing(6)
         content_layout.addWidget(self.system_label)
         content_layout.addLayout(status_row)
         content_layout.addWidget(self.component_table)
@@ -195,20 +221,24 @@ class SystemCheckDialog(QDialog):
         content_layout.addWidget(dependency_group)
         content_layout.addWidget(model_group)
         content = QWidget()
+        content.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         content.setLayout(content_layout)
-        content_scroll = QScrollArea()
-        content_scroll.setWidgetResizable(True)
-        content_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        content_scroll.setWidget(content)
+        self.content_scroll = QScrollArea()
+        self.content_scroll.setWidgetResizable(True)
+        self.content_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.content_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.content_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.content_scroll.setWidget(content)
         layout = QVBoxLayout()
-        layout.addWidget(content_scroll)
+        layout.addWidget(self.content_scroll)
         layout.addLayout(buttons)
         self.setLayout(layout)
+        ui_geometry.apply_initial_geometry(self, QSize(760, 600))
+        self._arrange_action_button_grids(force=True)
         self.setTabOrder(self.details_button, self.setup_dependencies_button)
         self.setTabOrder(self.setup_dependencies_button, self.ghostscript_button)
         self.setTabOrder(self.ghostscript_button, self.cancel_setup_button)
         self.setTabOrder(self.cancel_setup_button, self.choose_model_button)
-        ui_geometry.apply_initial_geometry(self, QSize(760, 600))
 
         self.refresh()
 
@@ -492,7 +522,11 @@ class SystemCheckDialog(QDialog):
             details.extend(component.details)
             if component.error:
                 details.append(component.error)
-            self.component_table.setItem(row, 2, QTableWidgetItem("; ".join(details)))
+            detail_text = "; ".join(details)
+            wrapped_detail_text = self._wrap_unbroken_segments(detail_text)
+            detail_item = QTableWidgetItem(self._clip_detail_text(wrapped_detail_text))
+            detail_item.setToolTip(detail_text)
+            self.component_table.setItem(row, 2, detail_item)
             if not component.available:
                 missing_components.append(component.key)
                 if component.key == "ghostscript":
@@ -500,6 +534,10 @@ class SystemCheckDialog(QDialog):
 
         guidance = [installation_guidance(component) for component in missing_components]
         self.guidance_label.setPlainText("\n".join(dict.fromkeys(guidance)))
+        self.component_table.setColumnWidth(0, min(max(self.component_table.columnWidth(0), 100), 140))
+        self.component_table.setColumnWidth(1, min(max(self.component_table.columnWidth(1), 84), 120))
+        self._resize_component_columns()
+        self._arrange_action_button_grids()
         has_guided_steps = bool(_default_steps(diagnostics))
         self.setup_dependencies_button.setEnabled(has_guided_steps and not self._setup_active())
         show_ghostscript_action = diagnostics.operating_system == "Windows" and ghostscript_missing
@@ -542,7 +580,130 @@ class SystemCheckDialog(QDialog):
 
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
+        self._arrange_action_button_grids(force=True)
         ui_geometry.clamp_widget_to_available_screen(self)
+        self._resize_component_columns()
+        self._arrange_action_button_grids(force=True)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._resize_component_columns()
+        self._arrange_action_button_grids()
+
+    def _arrange_action_button_grids(self, *, force: bool = False) -> None:
+        viewport_width = self.content_scroll.viewport().width() if hasattr(self, "content_scroll") else 0
+        use_two_columns = viewport_width >= self._BUTTON_TWO_COLUMN_MIN_WIDTH
+        signature = (use_two_columns, viewport_width)
+        if not force and getattr(self, "_button_layout_signature", None) == signature:
+            return
+        self._button_layout_signature = signature
+        self._rebuild_dependency_buttons_layout(use_two_columns)
+        self._rebuild_model_buttons_layout(use_two_columns)
+
+    def _rebuild_dependency_buttons_layout(self, use_two_columns: bool) -> None:
+        while self._dependency_buttons_layout.count():
+            self._dependency_buttons_layout.takeAt(0)
+        if use_two_columns:
+            self._dependency_buttons_layout.addWidget(self.setup_dependencies_button, 0, 0)
+            self._dependency_buttons_layout.addWidget(self.ghostscript_button, 0, 1)
+            self._dependency_buttons_layout.addWidget(self.cancel_setup_button, 1, 0)
+            self._dependency_buttons_layout.setColumnStretch(2, 1)
+            return
+        self._dependency_buttons_layout.addWidget(self.setup_dependencies_button, 0, 0)
+        self._dependency_buttons_layout.addWidget(self.ghostscript_button, 1, 0)
+        self._dependency_buttons_layout.addWidget(self.cancel_setup_button, 2, 0)
+        self._dependency_buttons_layout.setColumnStretch(0, 1)
+
+    def _rebuild_model_buttons_layout(self, use_two_columns: bool) -> None:
+        while self._model_buttons_layout.count():
+            self._model_buttons_layout.takeAt(0)
+        if use_two_columns:
+            self._model_buttons_layout.addWidget(self.choose_model_button, 0, 0)
+            self._model_buttons_layout.addWidget(self.reset_model_button, 0, 1)
+            self._model_buttons_layout.addWidget(self.download_model_button, 1, 0)
+            self._model_buttons_layout.addWidget(self.cancel_download_button, 1, 1)
+            self._model_buttons_layout.setColumnStretch(2, 1)
+            return
+        self._model_buttons_layout.addWidget(self.choose_model_button, 0, 0)
+        self._model_buttons_layout.addWidget(self.reset_model_button, 1, 0)
+        self._model_buttons_layout.addWidget(self.download_model_button, 2, 0)
+        self._model_buttons_layout.addWidget(self.cancel_download_button, 3, 0)
+        self._model_buttons_layout.setColumnStretch(0, 1)
+
+    def _resize_component_columns(self) -> None:
+        viewport_width = self.component_table.viewport().width()
+        if viewport_width <= 0:
+            return
+        scroll_viewport_width = (
+            self.content_scroll.viewport().width() if hasattr(self, "content_scroll") else 0
+        )
+        if scroll_viewport_width > 0:
+            viewport_width = min(viewport_width, max(0, scroll_viewport_width - 16))
+        header = self.component_table.horizontalHeader()
+        header_font_metrics = header.fontMetrics()
+        component_header_min = (
+            header_font_metrics.horizontalAdvance(self.component_table.horizontalHeaderItem(0).text())
+            + 24
+        )
+        status_header_min = (
+            header_font_metrics.horizontalAdvance(self.component_table.horizontalHeaderItem(1).text()) + 24
+        )
+
+        component_target = min(
+            self._COMPONENT_COLUMN_BASE,
+            max(
+                self._COMPONENT_COLUMN_MIN,
+                min(180, int(viewport_width * 0.30)),
+            ),
+        )
+        status_target = min(
+            self._STATUS_COLUMN_BASE,
+            max(
+                self._STATUS_COLUMN_MIN,
+                min(160, int(viewport_width * 0.24)),
+            ),
+        )
+        first = max(component_header_min, component_target)
+        second = max(status_header_min, status_target)
+        self.component_table.horizontalHeader().resizeSection(0, first)
+        self.component_table.horizontalHeader().resizeSection(1, second)
+        details_width = max(
+            self._DETAILS_COLUMN_MIN,
+            min(self._DETAILS_COLUMN_MAX, viewport_width - first - second - 44),
+        )
+        self.component_table.horizontalHeader().resizeSection(2, details_width)
+
+    @staticmethod
+    def _wrap_unbroken_segments(text: str, *, chunk_size: int = 24) -> str:
+        if not text:
+            return text
+        pieces: list[str] = []
+        token: list[str] = []
+        for char in text:
+            if char.isspace():
+                if token:
+                    pieces.append(SystemCheckDialog._wrap_token("".join(token), chunk_size))
+                    token.clear()
+                pieces.append(char)
+                continue
+            token.append(char)
+        if token:
+            pieces.append(SystemCheckDialog._wrap_token("".join(token), chunk_size))
+        return "".join(pieces)
+
+    @staticmethod
+    def _wrap_token(token: str, chunk_size: int) -> str:
+        if len(token) <= chunk_size:
+            return token
+        return "\u200b".join(
+            token[start : start + chunk_size] for start in range(0, len(token), chunk_size)
+        )
+
+    @staticmethod
+    def _clip_detail_text(text: str, *, max_chars: int = 220) -> str:
+        if len(text) <= max_chars:
+            return text
+        return f"{text[:max_chars].rstrip()}…"
 
     def open_ghostscript_download_page(self) -> None:
         answer = QMessageBox.question(
