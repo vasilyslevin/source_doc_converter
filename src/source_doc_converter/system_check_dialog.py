@@ -505,7 +505,7 @@ class SystemCheckDialog(QDialog):
                 details.append(component.error)
             detail_text = "; ".join(details)
             wrapped_detail_text = self._wrap_unbroken_segments(detail_text)
-            detail_item = QTableWidgetItem(wrapped_detail_text)
+            detail_item = QTableWidgetItem(self._clip_detail_text(wrapped_detail_text))
             detail_item.setToolTip(detail_text)
             self.component_table.setItem(row, 2, detail_item)
             if not component.available:
@@ -632,6 +632,12 @@ class SystemCheckDialog(QDialog):
         return "\u200b".join(
             token[start : start + chunk_size] for start in range(0, len(token), chunk_size)
         )
+
+    @staticmethod
+    def _clip_detail_text(text: str, *, max_chars: int = 220) -> str:
+        if len(text) <= max_chars:
+            return text
+        return f"{text[:max_chars].rstrip()}…"
 
     def open_ghostscript_download_page(self) -> None:
         answer = QMessageBox.question(
