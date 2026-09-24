@@ -2,7 +2,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, QSize, Qt, QThread, QUrl, Signal
-from PySide6.QtGui import QCloseEvent, QColor, QDesktopServices, QShowEvent
+from PySide6.QtGui import QCloseEvent, QColor, QDesktopServices, QResizeEvent, QShowEvent
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -73,6 +73,7 @@ class ActivityDetailsDialog(QDialog):
 
 class SystemCheckDialog(QDialog):
     diagnostics_updated = Signal(object)
+    _BUTTON_TWO_COLUMN_MIN_WIDTH = 560
 
     def __init__(
         self,
@@ -141,13 +142,9 @@ class SystemCheckDialog(QDialog):
         self.cancel_setup_button = QPushButton("Cancel Setup")
         self.cancel_setup_button.setEnabled(False)
         self.cancel_setup_button.clicked.connect(self.cancel_setup)
-        dependency_buttons = QGridLayout()
-        dependency_buttons.setHorizontalSpacing(8)
-        dependency_buttons.setVerticalSpacing(6)
-        dependency_buttons.addWidget(self.setup_dependencies_button, 0, 0)
-        dependency_buttons.addWidget(self.ghostscript_button, 0, 1)
-        dependency_buttons.addWidget(self.cancel_setup_button, 1, 0)
-        dependency_buttons.setColumnStretch(2, 1)
+        self._dependency_buttons_layout = QGridLayout()
+        self._dependency_buttons_layout.setHorizontalSpacing(8)
+        self._dependency_buttons_layout.setVerticalSpacing(6)
         dependency_copy = QLabel(
             "Installs missing OCRmyPDF/Tesseract dependencies in the background. "
             "Uses Homebrew on macOS or winget on Windows after explicit confirmation. "
@@ -157,7 +154,7 @@ class SystemCheckDialog(QDialog):
         dependency_copy.setWordWrap(True)
         dependency_layout = QVBoxLayout()
         dependency_layout.addWidget(dependency_copy)
-        dependency_layout.addLayout(dependency_buttons)
+        dependency_layout.addLayout(self._dependency_buttons_layout)
         dependency_group.setLayout(dependency_layout)
 
         model_group = QGroupBox("Local AI models")
@@ -172,17 +169,12 @@ class SystemCheckDialog(QDialog):
         self.cancel_download_button = QPushButton("Cancel Download")
         self.cancel_download_button.setEnabled(False)
         self.cancel_download_button.clicked.connect(self.cancel_model_download)
-        model_buttons = QGridLayout()
-        model_buttons.setHorizontalSpacing(8)
-        model_buttons.setVerticalSpacing(6)
-        model_buttons.addWidget(self.choose_model_button, 0, 0)
-        model_buttons.addWidget(self.reset_model_button, 0, 1)
-        model_buttons.addWidget(self.download_model_button, 1, 0)
-        model_buttons.addWidget(self.cancel_download_button, 1, 1)
-        model_buttons.setColumnStretch(2, 1)
+        self._model_buttons_layout = QGridLayout()
+        self._model_buttons_layout.setHorizontalSpacing(8)
+        self._model_buttons_layout.setVerticalSpacing(6)
         model_layout = QVBoxLayout()
         model_layout.addWidget(self.model_status_label)
-        model_layout.addLayout(model_buttons)
+        model_layout.addLayout(self._model_buttons_layout)
         model_group.setLayout(model_layout)
 
         self.refresh_button = QPushButton("Refresh")
@@ -220,11 +212,12 @@ class SystemCheckDialog(QDialog):
         layout.addWidget(self.content_scroll)
         layout.addLayout(buttons)
         self.setLayout(layout)
+        ui_geometry.apply_initial_geometry(self, QSize(760, 600))
+        self._arrange_action_button_grids(force=True)
         self.setTabOrder(self.details_button, self.setup_dependencies_button)
         self.setTabOrder(self.setup_dependencies_button, self.ghostscript_button)
         self.setTabOrder(self.ghostscript_button, self.cancel_setup_button)
         self.setTabOrder(self.cancel_setup_button, self.choose_model_button)
-        ui_geometry.apply_initial_geometry(self, QSize(760, 600))
 
         self.refresh()
 
@@ -508,7 +501,11 @@ class SystemCheckDialog(QDialog):
             details.extend(component.details)
             if component.error:
                 details.append(component.error)
-            self.component_table.setItem(row, 2, QTableWidgetItem("; ".join(details)))
+            detail_text = "; ".join(details)
+            wrapped_detail_text = self._wrap_unbroken_segments(detail_text)
+            detail_item = QTableWidgetItem(wrapped_detail_text)
+            detail_item.setToolTip(detail_text)
+            self.component_table.setItem(row, 2, detail_item)
             if not component.available:
                 missing_components.append(component.key)
                 if component.key == "ghostscript":
@@ -518,6 +515,7 @@ class SystemCheckDialog(QDialog):
         self.guidance_label.setPlainText("\n".join(dict.fromkeys(guidance)))
         self.component_table.resizeColumnsToContents()
         self.component_table.setColumnWidth(1, min(self.component_table.columnWidth(1), 220))
+        self._arrange_action_button_grids()
         has_guided_steps = bool(_default_steps(diagnostics))
         self.setup_dependencies_button.setEnabled(has_guided_steps and not self._setup_active())
         show_ghostscript_action = diagnostics.operating_system == "Windows" and ghostscript_missing
@@ -560,7 +558,78 @@ class SystemCheckDialog(QDialog):
 
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
+        self._arrange_action_button_grids(force=True)
         ui_geometry.clamp_widget_to_available_screen(self)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._arrange_action_button_grids()
+
+    def _arrange_action_button_grids(self, *, force: bool = False) -> None:
+        viewport_width = self.content_scroll.viewport().width() if hasattr(self, "content_scroll") else 0
+        use_two_columns = viewport_width >= self._BUTTON_TWO_COLUMN_MIN_WIDTH
+        signature = (use_two_columns, viewport_width)
+        if not force and getattr(self, "_button_layout_signature", None) == signature:
+            return
+        self._button_layout_signature = signature
+        self._rebuild_dependency_buttons_layout(use_two_columns)
+        self._rebuild_model_buttons_layout(use_two_columns)
+
+    def _rebuild_dependency_buttons_layout(self, use_two_columns: bool) -> None:
+        while self._dependency_buttons_layout.count():
+            self._dependency_buttons_layout.takeAt(0)
+        if use_two_columns:
+            self._dependency_buttons_layout.addWidget(self.setup_dependencies_button, 0, 0)
+            self._dependency_buttons_layout.addWidget(self.ghostscript_button, 0, 1)
+            self._dependency_buttons_layout.addWidget(self.cancel_setup_button, 1, 0)
+            self._dependency_buttons_layout.setColumnStretch(2, 1)
+            return
+        self._dependency_buttons_layout.addWidget(self.setup_dependencies_button, 0, 0)
+        self._dependency_buttons_layout.addWidget(self.ghostscript_button, 1, 0)
+        self._dependency_buttons_layout.addWidget(self.cancel_setup_button, 2, 0)
+        self._dependency_buttons_layout.setColumnStretch(0, 1)
+
+    def _rebuild_model_buttons_layout(self, use_two_columns: bool) -> None:
+        while self._model_buttons_layout.count():
+            self._model_buttons_layout.takeAt(0)
+        if use_two_columns:
+            self._model_buttons_layout.addWidget(self.choose_model_button, 0, 0)
+            self._model_buttons_layout.addWidget(self.reset_model_button, 0, 1)
+            self._model_buttons_layout.addWidget(self.download_model_button, 1, 0)
+            self._model_buttons_layout.addWidget(self.cancel_download_button, 1, 1)
+            self._model_buttons_layout.setColumnStretch(2, 1)
+            return
+        self._model_buttons_layout.addWidget(self.choose_model_button, 0, 0)
+        self._model_buttons_layout.addWidget(self.reset_model_button, 1, 0)
+        self._model_buttons_layout.addWidget(self.download_model_button, 2, 0)
+        self._model_buttons_layout.addWidget(self.cancel_download_button, 3, 0)
+        self._model_buttons_layout.setColumnStretch(0, 1)
+
+    @staticmethod
+    def _wrap_unbroken_segments(text: str, *, chunk_size: int = 24) -> str:
+        if not text:
+            return text
+        pieces: list[str] = []
+        token: list[str] = []
+        for char in text:
+            if char.isspace():
+                if token:
+                    pieces.append(SystemCheckDialog._wrap_token("".join(token), chunk_size))
+                    token.clear()
+                pieces.append(char)
+                continue
+            token.append(char)
+        if token:
+            pieces.append(SystemCheckDialog._wrap_token("".join(token), chunk_size))
+        return "".join(pieces)
+
+    @staticmethod
+    def _wrap_token(token: str, chunk_size: int) -> str:
+        if len(token) <= chunk_size:
+            return token
+        return "\u200b".join(
+            token[start : start + chunk_size] for start in range(0, len(token), chunk_size)
+        )
 
     def open_ghostscript_download_page(self) -> None:
         answer = QMessageBox.question(

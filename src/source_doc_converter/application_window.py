@@ -412,6 +412,7 @@ class ApplicationWindow(MainWindow):
 
     def _set_advanced_panel_visible(self, visible: bool) -> None:
         self.advanced_panel.setVisible(visible)
+        self._arrange_primary_sections()
         self._arrange_advanced_panel(force=True)
         self._save_processing_preferences()
 
@@ -424,8 +425,20 @@ class ApplicationWindow(MainWindow):
         self._arrange_advanced_panel(force=True)
 
     def _arrange_advanced_panel(self, *, force: bool = False) -> None:
-        target_width = self.content_scroll.viewport().width() or self.width()
-        two_column = target_width >= self._ADVANCED_TWO_COLUMN_THRESHOLD
+        target_width = self.output_group.contentsRect().width() or self.content_scroll.viewport().width()
+        spacing = self._advanced_layout.horizontalSpacing()
+        margins = self._advanced_layout.contentsMargins()
+        effective_width = target_width - margins.left() - margins.right()
+        left_min = self.searchable_pdf_group.minimumSizeHint().width()
+        right_min = max(
+            self.markdown_json_group.minimumSizeHint().width(),
+            self.performance_group.minimumSizeHint().width(),
+        )
+        needed_for_two_columns = left_min + right_min + spacing
+        two_column = (
+            target_width >= self._ADVANCED_TWO_COLUMN_THRESHOLD
+            and effective_width >= needed_for_two_columns
+        )
         if not force and self._advanced_two_column == two_column:
             return
         self._advanced_two_column = two_column

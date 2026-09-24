@@ -220,7 +220,7 @@ class MainWindow(QMainWindow):
         self._content_layout.setContentsMargins(8, 8, 8, 8)
         self._content_layout.setHorizontalSpacing(10)
         self._content_layout.setVerticalSpacing(6)
-        self._wide_layout_enabled: bool | None = None
+        self._layout_signature: tuple[bool, bool] | None = None
 
         content = QWidget()
         content.setMinimumWidth(0)
@@ -252,15 +252,21 @@ class MainWindow(QMainWindow):
         viewport = self.content_scroll.viewport()
         available_width = viewport.width() if viewport is not None else self.width()
         use_wide_layout = available_width >= self._WIDE_LAYOUT_THRESHOLD
-        if self._wide_layout_enabled == use_wide_layout:
+        compact_queue = (
+            use_wide_layout
+            and hasattr(self, "advanced_toggle_button")
+            and bool(self.advanced_toggle_button.isChecked())
+        )
+        layout_signature = (use_wide_layout, compact_queue)
+        if self._layout_signature == layout_signature:
             return
-        self._wide_layout_enabled = use_wide_layout
+        self._layout_signature = layout_signature
 
         while self._content_layout.count():
             self._content_layout.takeAt(0)
 
         if use_wide_layout:
-            self.queue.setMaximumHeight(210)
+            self.queue.setMaximumHeight(176 if compact_queue else 210)
             self._content_layout.addWidget(self.drop_area, 0, 0, 1, 2)
             self._content_layout.addWidget(self.queue_group, 1, 0)
             self._content_layout.addWidget(self.output_group, 1, 1)

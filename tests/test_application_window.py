@@ -672,6 +672,15 @@ def test_advanced_layout_fits_large_viewport_without_outer_scrollbars(
 
     assert window.content_scroll.horizontalScrollBar().maximum() == 0
     assert window.content_scroll.verticalScrollBar().maximum() == 0
+    needed_for_two_columns = (
+        window.searchable_pdf_group.minimumSizeHint().width()
+        + max(
+            window.markdown_json_group.minimumSizeHint().width(),
+            window.performance_group.minimumSizeHint().width(),
+        )
+        + window._advanced_layout.horizontalSpacing()
+    )
+    assert window.output_group.contentsRect().width() >= needed_for_two_columns
     assert window.markdown_json_group.geometry().x() > window.searchable_pdf_group.geometry().x()
 
 
@@ -693,6 +702,16 @@ def test_advanced_layout_keeps_controls_reachable_with_larger_font(monkeypatch, 
     qtbot.wait(20)
 
     assert window.content_scroll.horizontalScrollBar().maximum() == 0
+    if window._advanced_two_column:
+        needed_for_two_columns = (
+            window.searchable_pdf_group.minimumSizeHint().width()
+            + max(
+                window.markdown_json_group.minimumSizeHint().width(),
+                window.performance_group.minimumSizeHint().width(),
+            )
+            + window._advanced_layout.horizontalSpacing()
+        )
+        assert window.output_group.contentsRect().width() >= needed_for_two_columns
     window.content_scroll.verticalScrollBar().setValue(
         window.content_scroll.verticalScrollBar().maximum()
     )
