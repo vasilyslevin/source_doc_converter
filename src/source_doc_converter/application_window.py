@@ -440,8 +440,20 @@ class ApplicationWindow(MainWindow):
             self.performance_group.sizeHint().width(),
         )
         needed_for_two_columns = left_min + right_min + spacing
+        viewport_width = self.content_scroll.viewport().width() or self.width()
+        left_column_width = self._wide_left_column.minimumSizeHint().width()
+        main_spacing = self._content_layout.horizontalSpacing()
+        main_margins = self._content_layout.contentsMargins()
+        available_for_output = (
+            viewport_width
+            - left_column_width
+            - main_spacing
+            - main_margins.left()
+            - main_margins.right()
+        )
         two_column = (
             target_width >= self._ADVANCED_TWO_COLUMN_THRESHOLD
+            and available_for_output >= needed_for_two_columns
             and effective_width >= needed_for_two_columns
         )
         if not force and self._advanced_two_column == two_column:

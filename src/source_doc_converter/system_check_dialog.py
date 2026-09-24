@@ -111,14 +111,16 @@ class SystemCheckDialog(QDialog):
         self.component_table = QTableWidget(0, 3)
         self.component_table.setHorizontalHeaderLabels(["Component", "Status", "Details"])
         self.component_table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.ResizeToContents
+            0, QHeaderView.ResizeMode.Interactive
         )
         self.component_table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.ResizeMode.ResizeToContents
+            1, QHeaderView.ResizeMode.Interactive
         )
         self.component_table.horizontalHeader().setSectionResizeMode(
             2, QHeaderView.ResizeMode.Stretch
         )
+        self.component_table.setColumnWidth(0, 150)
+        self.component_table.setColumnWidth(1, 120)
         self.component_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.component_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self.component_table.setWordWrap(True)
@@ -513,8 +515,8 @@ class SystemCheckDialog(QDialog):
 
         guidance = [installation_guidance(component) for component in missing_components]
         self.guidance_label.setPlainText("\n".join(dict.fromkeys(guidance)))
-        self.component_table.setColumnWidth(0, min(self.component_table.columnWidth(0), 180))
-        self.component_table.setColumnWidth(1, min(self.component_table.columnWidth(1), 160))
+        self.component_table.setColumnWidth(0, min(max(self.component_table.columnWidth(0), 120), 180))
+        self.component_table.setColumnWidth(1, min(max(self.component_table.columnWidth(1), 100), 160))
         self._arrange_action_button_grids()
         has_guided_steps = bool(_default_steps(diagnostics))
         self.setup_dependencies_button.setEnabled(has_guided_steps and not self._setup_active())
