@@ -53,6 +53,9 @@ jobs:
         run: ruff check .
 
       - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QT_API: pyside6
         run: pytest
 
       - name: Build standalone folder (Full)
