@@ -99,8 +99,14 @@ class SystemCheckDialog(QDialog):
 
         self.system_label = QLabel()
         self.system_label.setWordWrap(True)
+        self.system_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.system_label.setMinimumWidth(0)
         self.activity_status_label = QLabel("Status: Ready")
         self.activity_status_label.setWordWrap(True)
+        self.activity_status_label.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+        )
+        self.activity_status_label.setMinimumWidth(0)
         self.details_button = QPushButton("Show Setup Details")
         self.details_button.clicked.connect(self._details_dialog.show)
         status_row = QHBoxLayout()
@@ -155,6 +161,8 @@ class SystemCheckDialog(QDialog):
             "Ghostscript remains optional/recommended for PDF/A and advanced post-processing."
         )
         dependency_copy.setWordWrap(True)
+        dependency_copy.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        dependency_copy.setMinimumWidth(0)
         dependency_layout = QVBoxLayout()
         dependency_layout.addWidget(dependency_copy)
         dependency_layout.addLayout(self._dependency_buttons_layout)
@@ -163,6 +171,8 @@ class SystemCheckDialog(QDialog):
         model_group = QGroupBox("Local AI models")
         self.model_status_label = QLabel()
         self.model_status_label.setWordWrap(True)
+        self.model_status_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.model_status_label.setMinimumWidth(0)
         self.choose_model_button = QPushButton("Choose Model Folder")
         self.choose_model_button.clicked.connect(self.choose_model_directory)
         self.reset_model_button = QPushButton("Reset to Default Folder")

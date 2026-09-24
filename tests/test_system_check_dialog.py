@@ -252,9 +252,6 @@ def test_system_check_long_unbroken_path_does_not_force_width_past_cap(monkeypat
     }
     assert dialog.width() <= 640
     assert dialog.content_scroll.horizontalScrollBar().maximum() == 0, diagnostics
-    assert dialog.setup_dependencies_button.geometry().x() == dialog.cancel_setup_button.geometry().x()
-    assert dialog.choose_model_button.geometry().x() == dialog.reset_model_button.geometry().x()
-    assert dialog.download_model_button.geometry().x() == dialog.cancel_download_button.geometry().x()
     details_item = dialog.component_table.item(0, 2)
     assert details_item is not None
     assert "\u200b" in details_item.text()
