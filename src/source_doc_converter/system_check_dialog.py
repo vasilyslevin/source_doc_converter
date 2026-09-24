@@ -624,9 +624,14 @@ class SystemCheckDialog(QDialog):
         viewport_width = self.component_table.viewport().width()
         if viewport_width <= 0:
             return
+        scroll_viewport_width = (
+            self.content_scroll.viewport().width() if hasattr(self, "content_scroll") else 0
+        )
+        if scroll_viewport_width > 0:
+            viewport_width = min(viewport_width, max(0, scroll_viewport_width - 16))
         first = self.component_table.columnWidth(0)
         second = self.component_table.columnWidth(1)
-        details_width = max(160, min(520, viewport_width - first - second - 44))
+        details_width = max(120, min(520, viewport_width - first - second - 44))
         self.component_table.setColumnWidth(2, details_width)
 
     @staticmethod
