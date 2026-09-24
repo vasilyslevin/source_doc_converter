@@ -1,6 +1,10 @@
+import platform
+import pprint
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, QRect, QSettings, QUrl
+from PySide6 import __version__ as PYSIDE_VERSION
+from PySide6.QtCore import QPoint, QRect, QSettings, QUrl, qVersion
+from PySide6.QtGui import QGuiApplication
 
 from source_doc_converter import application_window
 from source_doc_converter import main_window as base_main_window
@@ -60,6 +64,10 @@ def assert_reachable_with_optional_horizontal_scroll(window: ApplicationWindow, 
     horizontal.setValue(horizontal.maximum())
     position = control.mapTo(viewport, QPoint(0, 0))
     assert position.x() + control.width() <= viewport.width()
+
+
+def _full_diagnostics_message(diagnostics: dict[str, object]) -> str:
+    return pprint.pformat(diagnostics, width=200, sort_dicts=True, compact=False)
 
 
 def test_unavailable_components_disable_outputs(qtbot) -> None:
@@ -689,10 +697,31 @@ def test_advanced_layout_fits_large_viewport_without_outer_scrollbars(
         "queue": (window.queue.height(), window.queue.maximumHeight()),
         "output_group": (window.output_group.height(), window.output_group.sizeHint().height()),
         "actions_group": (window.actions_group.height(), window.actions_group.sizeHint().height()),
+        "output_width": window.output_group.contentsRect().width(),
+        "available_output_width": (
+            window.content_scroll.viewport().width()
+            - window._wide_left_column.minimumSizeHint().width()
+            - window._content_layout.horizontalSpacing()
+            - window._content_layout.contentsMargins().left()
+            - window._content_layout.contentsMargins().right()
+        ),
         "advanced_two_column": window._advanced_two_column,
+        "python_version": platform.python_version(),
+        "pyside_version": PYSIDE_VERSION,
+        "qt_version": qVersion(),
+        "qt_platform": QGuiApplication.platformName(),
+        "dpi": None,
+        "font_metrics": (
+            window.fontMetrics().height(),
+            window.fontMetrics().averageCharWidth(),
+        ),
     }
-    assert window.content_scroll.horizontalScrollBar().maximum() == 0, diagnostics
-    assert window.content_scroll.verticalScrollBar().maximum() == 0, diagnostics
+    screen = window.screen() or QGuiApplication.primaryScreen()
+    if screen is not None:
+        diagnostics["dpi"] = screen.logicalDotsPerInch()
+    diagnostics_message = _full_diagnostics_message(diagnostics)
+    assert window.content_scroll.horizontalScrollBar().maximum() == 0, diagnostics_message
+    assert window.content_scroll.verticalScrollBar().maximum() == 0, diagnostics_message
     needed_for_two_columns = (
         window.searchable_pdf_group.minimumSizeHint().width()
         + max(
@@ -733,9 +762,54 @@ def test_advanced_layout_keeps_controls_reachable_with_larger_font(monkeypatch, 
             window.content_scroll.verticalScrollBar().maximum(),
         ),
         "output_width": window.output_group.contentsRect().width(),
+        "left_column_width": window._wide_left_column.width(),
+        "left_column_min_hint": window._wide_left_column.minimumSizeHint().width(),
+        "content_margins": (
+            window._content_layout.contentsMargins().left(),
+            window._content_layout.contentsMargins().right(),
+        ),
+        "content_spacing": window._content_layout.horizontalSpacing(),
+        "available_output_width": (
+            window.content_scroll.viewport().width()
+            - window._wide_left_column.width()
+            - window._content_layout.horizontalSpacing()
+            - window._content_layout.contentsMargins().left()
+            - window._content_layout.contentsMargins().right()
+        ),
+        "content_size_hint": (
+            window.content_scroll.widget().sizeHint().width(),
+            window.content_scroll.widget().sizeHint().height(),
+        ),
+        "group_hints": {
+            "searchable": (
+                window.searchable_pdf_group.minimumSizeHint().width(),
+                window.searchable_pdf_group.sizeHint().width(),
+            ),
+            "markdown_json": (
+                window.markdown_json_group.minimumSizeHint().width(),
+                window.markdown_json_group.sizeHint().width(),
+            ),
+            "performance": (
+                window.performance_group.minimumSizeHint().width(),
+                window.performance_group.sizeHint().width(),
+            ),
+        },
+        "python_version": platform.python_version(),
+        "pyside_version": PYSIDE_VERSION,
+        "qt_version": qVersion(),
+        "qt_platform": QGuiApplication.platformName(),
+        "dpi": None,
+        "font_metrics": (
+            window.fontMetrics().height(),
+            window.fontMetrics().averageCharWidth(),
+        ),
         "advanced_two_column": window._advanced_two_column,
     }
-    assert window.content_scroll.horizontalScrollBar().maximum() == 0, diagnostics
+    screen = window.screen() or QGuiApplication.primaryScreen()
+    if screen is not None:
+        diagnostics["dpi"] = screen.logicalDotsPerInch()
+    diagnostics_message = _full_diagnostics_message(diagnostics)
+    assert window.content_scroll.horizontalScrollBar().maximum() == 0, diagnostics_message
     if window._advanced_two_column:
         needed_for_two_columns = (
             window.searchable_pdf_group.minimumSizeHint().width()

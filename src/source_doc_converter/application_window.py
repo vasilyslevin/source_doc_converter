@@ -440,29 +440,25 @@ class ApplicationWindow(MainWindow):
             self.performance_group.sizeHint().width(),
         )
         needed_for_two_columns = left_min + right_min + spacing
-        viewport_width = self.content_scroll.viewport().width() or self.width()
-        left_column_width = self._wide_left_column.minimumSizeHint().width()
-        main_spacing = self._content_layout.horizontalSpacing()
-        main_margins = self._content_layout.contentsMargins()
-        available_for_output = (
-            viewport_width
-            - left_column_width
-            - main_spacing
-            - main_margins.left()
-            - main_margins.right()
-        )
         two_column = (
             target_width >= self._ADVANCED_TWO_COLUMN_THRESHOLD
-            and available_for_output >= needed_for_two_columns
             and effective_width >= needed_for_two_columns
         )
-        if not force and self._advanced_two_column == two_column:
+        if not force and self._advanced_two_column == two_column and not two_column:
             return
+        self._set_advanced_panel_columns(two_column)
+
+        if two_column:
+            viewport_width = self.content_scroll.viewport().width()
+            content_min_width = self.content_scroll.widget().minimumSizeHint().width()
+            if viewport_width > 0 and content_min_width > viewport_width:
+                two_column = False
+                self._set_advanced_panel_columns(False)
         self._advanced_two_column = two_column
 
+    def _set_advanced_panel_columns(self, two_column: bool) -> None:
         while self._advanced_layout.count():
             self._advanced_layout.takeAt(0)
-
         if two_column:
             self._advanced_layout.addWidget(self.searchable_pdf_group, 0, 0, 2, 1)
             self._advanced_layout.addWidget(self.markdown_json_group, 0, 1)
