@@ -132,7 +132,7 @@ class SystemCheckDialog(QDialog):
         self.component_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self.component_table.setWordWrap(True)
         self.component_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.component_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.component_table.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.component_table.setMinimumWidth(0)
 
         self.guidance_label = QPlainTextEdit()
@@ -167,6 +167,7 @@ class SystemCheckDialog(QDialog):
         dependency_layout.addWidget(dependency_copy)
         dependency_layout.addLayout(self._dependency_buttons_layout)
         dependency_group.setLayout(dependency_layout)
+        dependency_group.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
 
         model_group = QGroupBox("Local AI models")
         self.model_status_label = QLabel()
@@ -189,6 +190,7 @@ class SystemCheckDialog(QDialog):
         model_layout.addWidget(self.model_status_label)
         model_layout.addLayout(self._model_buttons_layout)
         model_group.setLayout(model_layout)
+        model_group.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
 
         self.refresh_button = QPushButton("Refresh")
         self.refresh_button.clicked.connect(self.refresh)
@@ -213,7 +215,7 @@ class SystemCheckDialog(QDialog):
         content_layout.addWidget(dependency_group)
         content_layout.addWidget(model_group)
         content = QWidget()
-        content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        content.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         content.setLayout(content_layout)
         self.content_scroll = QScrollArea()
         self.content_scroll.setWidgetResizable(True)
