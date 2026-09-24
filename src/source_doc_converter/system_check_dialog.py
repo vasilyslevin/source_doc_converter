@@ -117,10 +117,11 @@ class SystemCheckDialog(QDialog):
             1, QHeaderView.ResizeMode.Interactive
         )
         self.component_table.horizontalHeader().setSectionResizeMode(
-            2, QHeaderView.ResizeMode.Stretch
+            2, QHeaderView.ResizeMode.Interactive
         )
         self.component_table.setColumnWidth(0, 150)
         self.component_table.setColumnWidth(1, 120)
+        self.component_table.setColumnWidth(2, 260)
         self.component_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.component_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self.component_table.setWordWrap(True)
@@ -517,6 +518,7 @@ class SystemCheckDialog(QDialog):
         self.guidance_label.setPlainText("\n".join(dict.fromkeys(guidance)))
         self.component_table.setColumnWidth(0, min(max(self.component_table.columnWidth(0), 120), 180))
         self.component_table.setColumnWidth(1, min(max(self.component_table.columnWidth(1), 100), 160))
+        self._resize_component_columns()
         self._arrange_action_button_grids()
         has_guided_steps = bool(_default_steps(diagnostics))
         self.setup_dependencies_button.setEnabled(has_guided_steps and not self._setup_active())
@@ -565,6 +567,7 @@ class SystemCheckDialog(QDialog):
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
+        self._resize_component_columns()
         self._arrange_action_button_grids()
 
     def _arrange_action_button_grids(self, *, force: bool = False) -> None:
@@ -606,6 +609,15 @@ class SystemCheckDialog(QDialog):
         self._model_buttons_layout.addWidget(self.download_model_button, 2, 0)
         self._model_buttons_layout.addWidget(self.cancel_download_button, 3, 0)
         self._model_buttons_layout.setColumnStretch(0, 1)
+
+    def _resize_component_columns(self) -> None:
+        viewport_width = self.component_table.viewport().width()
+        if viewport_width <= 0:
+            return
+        first = self.component_table.columnWidth(0)
+        second = self.component_table.columnWidth(1)
+        details_width = max(180, min(520, viewport_width - first - second - 8))
+        self.component_table.setColumnWidth(2, details_width)
 
     @staticmethod
     def _wrap_unbroken_segments(text: str, *, chunk_size: int = 24) -> str:
