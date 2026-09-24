@@ -179,7 +179,7 @@ class ApplicationWindow(MainWindow):
             self._setting_bool(COMBINED_MARKDOWN_BUNDLE_SETTING, False)
         )
         self.combined_markdown_bundle_checkbox.setToolTip(
-            "Creates one additional combined_markdown.md file using Markdown outputs from this job only."
+            "Creates one additional bundle named from queued PDF stems (for example 332_333_1246.md) using Markdown outputs from this job only."
         )
         self.combined_markdown_bundle_checkbox.setAccessibleDescription(
             "Create one additional combined Markdown bundle only when Markdown for AI output is selected."
@@ -304,7 +304,7 @@ class ApplicationWindow(MainWindow):
         ai_options_row.addWidget(self.table_structure_checkbox)
         ai_options_row.addWidget(self.combined_markdown_bundle_checkbox)
         combined_bundle_help = QLabel(
-            "Creates one extra combined_markdown.md file after individual Markdown files are generated."
+            "Creates one extra Markdown bundle named from queued PDF stems after individual Markdown files are generated."
         )
         combined_bundle_help.setWordWrap(True)
         ai_options_row.addWidget(combined_bundle_help)
@@ -516,7 +516,7 @@ class ApplicationWindow(MainWindow):
         self.combined_markdown_bundle_checkbox.setEnabled(available)
         if available:
             self.combined_markdown_bundle_checkbox.setToolTip(
-                "Creates one additional combined_markdown.md file using Markdown outputs from this job only."
+                "Creates one additional bundle named from queued PDF stems (for example 332_333_1246.md) using Markdown outputs from this job only."
             )
             return
         self.combined_markdown_bundle_checkbox.setToolTip(
@@ -616,8 +616,8 @@ class ApplicationWindow(MainWindow):
         )
         save_language_selection(selected or ("eng",), self._settings)
 
-    def set_output_directory(self, path: Path) -> None:
-        super().set_output_directory(path)
+    def set_output_directory(self, path: Path, *, automatic: bool = False) -> None:
+        super().set_output_directory(path, automatic=automatic)
         if hasattr(self, "open_output_button"):
             self._update_open_output_button()
 

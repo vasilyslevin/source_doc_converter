@@ -12,7 +12,7 @@ GETTING_STARTED = HelpSection(
     body="""
 1. Add PDFs or Add Folder in the drop area to queue source documents.
 2. Review the queue and remove items you do not want to process.
-3. Choose an output folder. Nothing runs until you do this.
+3. Choose an output folder, or use the auto-suggested `<source folder>/Converted` path when every queued PDF shares one parent folder.
 4. Select output types: Searchable PDF, Markdown for AI, and/or Structured JSON.
 5. Optionally expand Advanced options to tune OCR, AI behavior, performance, and Markdown bundling.
 6. Click Process Documents.
@@ -22,7 +22,7 @@ Fresh-install behavior:
 - Adding a file only queues it.
 - No processing starts automatically.
 - The source document is never modified in place.
-- You must choose an output folder before processing.
+- If all queued PDFs come from one parent folder, the app auto-suggests `<source folder>/Converted`.
 - Default processing creates Searchable PDF only.
 - Combined Markdown bundle stays off unless you explicitly enable it.
 - Markdown/JSON require selecting those outputs and having local Docling models ready.
@@ -36,7 +36,7 @@ What each output creates:
 - Searchable PDF: Uses OCRmyPDF + Tesseract to add searchable/selectable text to a PDF.
 - Markdown for AI: Uses Docling to create markdown for AI workflows.
 - Structured JSON: Uses Docling to create structured extraction data.
-- Create combined Markdown bundle: Adds one extra `combined_markdown.md` file from Markdown outputs generated in the current job while preserving each individual Markdown file.
+- Create combined Markdown bundle: Adds one extra `.md` bundle named from queued PDF stems (for example `332_333_1246.md`) from Markdown outputs generated in the current job while preserving each individual Markdown file.
 
 Searchable PDF / OCR settings (these affect Searchable PDF output):
 - OCR mode: Smart legal document (recommended) checks whether a page already has usable text and handles common legal-document mixes of digital text + scanned pages safely.
@@ -61,7 +61,7 @@ Markdown and JSON analysis settings (these affect Markdown/JSON outputs):
   - Accurate Markdown: Preserves richer layout/structure but uses more processing.
 - Analyze table structure: Improves extraction of complex tables for accurate Markdown/JSON analysis and adds extra processing time.
 - OCR scanned pages in AI output: Runs Docling OCR for Markdown/JSON generation only. This is separate from OCRmyPDF/Tesseract, which are used for Searchable PDF output.
-- Create combined Markdown bundle: Is available only when Markdown for AI is selected and creates one additional file after individual Markdown outputs are written.
+- Create combined Markdown bundle: Is available only when Markdown for AI is selected and creates one additional stem-based bundle file after individual Markdown outputs are written.
 
 Performance settings:
 - Maximum speed: Uses more worker/thread capacity to finish sooner.
