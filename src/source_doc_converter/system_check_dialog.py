@@ -574,6 +574,8 @@ class SystemCheckDialog(QDialog):
         super().showEvent(event)
         self._arrange_action_button_grids(force=True)
         ui_geometry.clamp_widget_to_available_screen(self)
+        self._resize_component_columns()
+        self._arrange_action_button_grids(force=True)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
