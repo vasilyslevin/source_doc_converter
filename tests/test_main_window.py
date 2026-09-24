@@ -205,9 +205,11 @@ def test_processing_controls_are_in_single_group_with_requested_order(qtbot) -> 
     action_row = actions_layout.itemAt(0).layout()
     assert action_row.itemAt(0).widget() is window.process_button
     assert action_row.itemAt(1).widget() is window.cancel_button
-    assert action_row.itemAt(2).widget() is window.open_output_button
     assert actions_layout.itemAt(1).widget() is window.activity_label
     assert actions_layout.itemAt(2).widget() is window.progress_bar
+    open_row = actions_layout.itemAt(3).layout()
+    assert open_row is not None
+    assert open_row.itemAt(0).widget() is window.open_output_button
 
 
 def test_controls_remain_reachable_at_constrained_width_and_large_font(qtbot) -> None:

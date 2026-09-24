@@ -513,8 +513,8 @@ class SystemCheckDialog(QDialog):
 
         guidance = [installation_guidance(component) for component in missing_components]
         self.guidance_label.setPlainText("\n".join(dict.fromkeys(guidance)))
-        self.component_table.resizeColumnsToContents()
-        self.component_table.setColumnWidth(1, min(self.component_table.columnWidth(1), 220))
+        self.component_table.setColumnWidth(0, min(self.component_table.columnWidth(0), 180))
+        self.component_table.setColumnWidth(1, min(self.component_table.columnWidth(1), 160))
         self._arrange_action_button_grids()
         has_guided_steps = bool(_default_steps(diagnostics))
         self.setup_dependencies_button.setEnabled(has_guided_steps and not self._setup_active())

@@ -202,8 +202,11 @@ class MainWindow(QMainWindow):
         action_row = QHBoxLayout()
         action_row.addWidget(self.process_button)
         action_row.addWidget(self.cancel_button)
-        action_row.addWidget(self.open_output_button)
         action_row.addStretch()
+
+        open_output_row = QHBoxLayout()
+        open_output_row.addWidget(self.open_output_button)
+        open_output_row.addStretch()
 
         self.actions_group = QGroupBox("6) Process and 7) Activity")
         self.actions_group.setSizePolicy(
@@ -214,7 +217,17 @@ class MainWindow(QMainWindow):
         actions_layout.addLayout(action_row)
         actions_layout.addWidget(self.activity_label)
         actions_layout.addWidget(self.progress_bar)
+        actions_layout.addLayout(open_output_row)
         self.actions_group.setLayout(actions_layout)
+
+        self._wide_left_column = QWidget()
+        self._wide_left_column.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self._wide_left_layout = QVBoxLayout()
+        self._wide_left_layout.setContentsMargins(0, 0, 0, 0)
+        self._wide_left_layout.setSpacing(6)
+        self._wide_left_layout.addWidget(self.drop_area)
+        self._wide_left_layout.addWidget(self.queue_group)
+        self._wide_left_column.setLayout(self._wide_left_layout)
 
         self._content_layout = QGridLayout()
         self._content_layout.setContentsMargins(8, 8, 8, 8)
@@ -267,23 +280,21 @@ class MainWindow(QMainWindow):
 
         if use_wide_layout:
             self.queue.setMaximumHeight(136 if compact_queue else 210)
-            self._content_layout.addWidget(self.drop_area, 0, 0, 1, 2)
-            self._content_layout.addWidget(self.queue_group, 1, 0)
-            self._content_layout.addWidget(self.output_group, 1, 1)
-            self._content_layout.addWidget(self.actions_group, 2, 0, 1, 2)
+            self._content_layout.addWidget(self._wide_left_column, 0, 0)
+            self._content_layout.addWidget(self.output_group, 0, 1)
+            self._content_layout.addWidget(self.actions_group, 1, 0, 1, 2)
             self._content_layout.setColumnStretch(0, 1)
             self._content_layout.setColumnStretch(1, 1)
-            self._content_layout.setRowStretch(3, 1)
+            self._content_layout.setRowStretch(2, 1)
             return
 
         self.queue.setMaximumHeight(240)
-        self._content_layout.addWidget(self.drop_area, 0, 0)
-        self._content_layout.addWidget(self.queue_group, 1, 0)
-        self._content_layout.addWidget(self.output_group, 2, 0)
-        self._content_layout.addWidget(self.actions_group, 3, 0)
+        self._content_layout.addWidget(self._wide_left_column, 0, 0)
+        self._content_layout.addWidget(self.output_group, 1, 0)
+        self._content_layout.addWidget(self.actions_group, 2, 0)
         self._content_layout.setColumnStretch(0, 1)
         self._content_layout.setColumnStretch(1, 0)
-        self._content_layout.setRowStretch(4, 1)
+        self._content_layout.setRowStretch(3, 1)
 
     @property
     def pdf_paths(self) -> tuple[Path, ...]:
