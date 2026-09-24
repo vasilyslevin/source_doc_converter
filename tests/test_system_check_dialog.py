@@ -43,6 +43,15 @@ def _assert_visible_in_scroll_viewport(dialog: SystemCheckDialog, control) -> No
     assert position.y() + control.height() <= viewport.height()
 
 
+def _scroll_into_view_and_assert_visible(dialog: SystemCheckDialog, control, qtbot) -> None:
+    if not control.isVisible():
+        return
+    dialog.content_scroll.ensureWidgetVisible(control, 0, 0)
+    qtbot.wait(10)
+    _assert_visible_in_scroll_viewport(dialog, control)
+    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
+
+
 def test_dialog_displays_component_status(qtbot) -> None:
     dialog = SystemCheckDialog(diagnostics_provider=sample_diagnostics)
     qtbot.addWidget(dialog)
@@ -256,6 +265,64 @@ def test_system_check_long_unbroken_path_does_not_force_width_past_cap(monkeypat
     assert details_item is not None
     assert "\u200b" in details_item.text()
     assert long_token in details_item.toolTip()
+    for control in (
+        dialog.setup_dependencies_button,
+        dialog.cancel_setup_button,
+        dialog.choose_model_button,
+        dialog.reset_model_button,
+        dialog.download_model_button,
+        dialog.cancel_download_button,
+    ):
+        _scroll_into_view_and_assert_visible(dialog, control, qtbot)
+
+
+def test_system_check_long_unbroken_path_large_font_keeps_actions_reachable(monkeypatch, qtbot) -> None:
+    monkeypatch.setattr(
+        "source_doc_converter.ui_geometry.available_geometry_for_widget",
+        lambda _: QRect(0, 0, 640, 480),
+    )
+    long_token = "C:\\" + ("verylongsegment" * 30)
+
+    def diagnostics() -> SystemDiagnostics:
+        return SystemDiagnostics(
+            application_version="0.1.0a0",
+            operating_system="Windows",
+            operating_system_version="11",
+            architecture="x86_64",
+            python_version="3.12.0",
+            pyside_version="6.9.0",
+            components=(
+                ComponentStatus("ocrmypdf", "OCRmyPDF", False, error=long_token),
+                ComponentStatus("tesseract", "Tesseract OCR", True, "5.5.0"),
+                ComponentStatus(
+                    "ghostscript",
+                    "Ghostscript",
+                    False,
+                    details=(
+                        "Optional — not installed. Standard searchable PDF output works without Ghostscript.",
+                    ),
+                ),
+                ComponentStatus("docling", "Docling", True, "2.50.0"),
+            ),
+        )
+
+    dialog = SystemCheckDialog(diagnostics_provider=diagnostics)
+    qtbot.addWidget(dialog)
+    dialog.setStyleSheet("QWidget { font-size: 14pt; }")
+    dialog.show()
+    qtbot.wait(10)
+
+    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
+    for control in (
+        dialog.setup_dependencies_button,
+        dialog.ghostscript_button,
+        dialog.cancel_setup_button,
+        dialog.choose_model_button,
+        dialog.reset_model_button,
+        dialog.download_model_button,
+        dialog.cancel_download_button,
+    ):
+        _scroll_into_view_and_assert_visible(dialog, control, qtbot)
 
 
 def test_system_check_summary_actions_fit_large_viewport_without_outer_scroll(
@@ -319,11 +386,73 @@ def test_system_check_resize_large_small_large_clears_stale_overflow(monkeypatch
     assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
     assert dialog.content_scroll.verticalScrollBar().maximum() == 0
 
-    dialog.resize(1024, 640)
+    dialog.resize(640, 480)
     qtbot.wait(20)
-    assert dialog.content_scroll.verticalScrollBar().maximum() >= 0
+    assert dialog.content_scroll.verticalScrollBar().maximum() > 0
+    for control in (
+        dialog.setup_dependencies_button,
+        dialog.cancel_setup_button,
+        dialog.choose_model_button,
+        dialog.reset_model_button,
+        dialog.download_model_button,
+        dialog.cancel_download_button,
+    ):
+        _scroll_into_view_and_assert_visible(dialog, control, qtbot)
 
     dialog.resize(1400, 900)
     qtbot.wait(20)
     assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
     assert dialog.content_scroll.verticalScrollBar().maximum() == 0
+
+    dialog.resize(640, 480)
+    qtbot.wait(20)
+    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
+    assert dialog.content_scroll.verticalScrollBar().maximum() > 0
+    for control in (
+        dialog.setup_dependencies_button,
+        dialog.cancel_setup_button,
+        dialog.choose_model_button,
+        dialog.reset_model_button,
+        dialog.download_model_button,
+        dialog.cancel_download_button,
+    ):
+        _scroll_into_view_and_assert_visible(dialog, control, qtbot)
+
+
+def test_system_check_component_columns_recover_after_resize_cycle(monkeypatch, qtbot) -> None:
+    monkeypatch.setattr(
+        "source_doc_converter.ui_geometry.available_geometry_for_widget",
+        lambda _: QRect(0, 0, 1800, 1200),
+    )
+    dialog = SystemCheckDialog(diagnostics_provider=sample_diagnostics)
+    qtbot.addWidget(dialog)
+    dialog.resize(1400, 900)
+    dialog.show()
+    qtbot.wait(20)
+
+    initial = (dialog.component_table.columnWidth(0), dialog.component_table.columnWidth(1))
+    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
+
+    dialog.resize(640, 480)
+    qtbot.wait(20)
+    dialog.component_table.horizontalHeader().resizeSection(0, 100)
+    dialog.component_table.horizontalHeader().resizeSection(1, 84)
+    narrow = (dialog.component_table.columnWidth(0), dialog.component_table.columnWidth(1))
+    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
+
+    dialog.resize(1400, 900)
+    qtbot.wait(20)
+    wide = (dialog.component_table.columnWidth(0), dialog.component_table.columnWidth(1))
+    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
+
+    dialog.resize(640, 480)
+    qtbot.wait(20)
+    narrow_again = (dialog.component_table.columnWidth(0), dialog.component_table.columnWidth(1))
+    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
+
+    assert wide[0] >= initial[0]
+    assert wide[1] >= initial[1]
+    assert wide[0] > narrow[0]
+    assert wide[1] > narrow[1]
+    assert narrow_again[0] <= wide[0]
+    assert narrow_again[1] <= wide[1]

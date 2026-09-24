@@ -74,6 +74,12 @@ class ActivityDetailsDialog(QDialog):
 class SystemCheckDialog(QDialog):
     diagnostics_updated = Signal(object)
     _BUTTON_TWO_COLUMN_MIN_WIDTH = 560
+    _COMPONENT_COLUMN_BASE = 140
+    _STATUS_COLUMN_BASE = 120
+    _COMPONENT_COLUMN_MIN = 100
+    _STATUS_COLUMN_MIN = 84
+    _DETAILS_COLUMN_MIN = 120
+    _DETAILS_COLUMN_MAX = 520
 
     def __init__(
         self,
@@ -633,17 +639,38 @@ class SystemCheckDialog(QDialog):
         )
         if scroll_viewport_width > 0:
             viewport_width = min(viewport_width, max(0, scroll_viewport_width - 16))
-        first = min(
-            self.component_table.columnWidth(0),
-            max(100, min(180, int(viewport_width * 0.30))),
+        header = self.component_table.horizontalHeader()
+        header_font_metrics = header.fontMetrics()
+        component_header_min = (
+            header_font_metrics.horizontalAdvance(self.component_table.horizontalHeaderItem(0).text())
+            + 24
         )
-        second = min(
-            self.component_table.columnWidth(1),
-            max(84, min(160, int(viewport_width * 0.24))),
+        status_header_min = (
+            header_font_metrics.horizontalAdvance(self.component_table.horizontalHeaderItem(1).text()) + 24
         )
+
+        component_target = min(
+            self._COMPONENT_COLUMN_BASE,
+            max(
+                self._COMPONENT_COLUMN_MIN,
+                min(180, int(viewport_width * 0.30)),
+            ),
+        )
+        status_target = min(
+            self._STATUS_COLUMN_BASE,
+            max(
+                self._STATUS_COLUMN_MIN,
+                min(160, int(viewport_width * 0.24)),
+            ),
+        )
+        first = max(component_header_min, component_target)
+        second = max(status_header_min, status_target)
         self.component_table.horizontalHeader().resizeSection(0, first)
         self.component_table.horizontalHeader().resizeSection(1, second)
-        details_width = max(120, min(520, viewport_width - first - second - 44))
+        details_width = max(
+            self._DETAILS_COLUMN_MIN,
+            min(self._DETAILS_COLUMN_MAX, viewport_width - first - second - 44),
+        )
         self.component_table.horizontalHeader().resizeSection(2, details_width)
 
     @staticmethod
