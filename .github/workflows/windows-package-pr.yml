@@ -19,7 +19,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  qt-geometry-preflight:
+    runs-on: windows-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install test dependencies (full extras)
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[full,dev]"
+
+      - name: Record Qt geometry environment
+        shell: pwsh
+        run: |
+          python -c "import platform, os; from PySide6 import __version__ as pyside; from PySide6.QtCore import qVersion; from PySide6.QtGui import QGuiApplication, QFontMetrics; from PySide6.QtWidgets import QApplication; app = QApplication([]); screen = QGuiApplication.primaryScreen(); font = app.font(); fm = QFontMetrics(font); print(f'python={platform.python_version()}'); print(f'pyside6={pyside}'); print(f'qt={qVersion()}'); print(f'qt_platform={QGuiApplication.platformName()}'); print(f'qt_qpa_platform={os.environ.get(\"QT_QPA_PLATFORM\")}'); print(f'dpi={screen.logicalDotsPerInch() if screen else None}'); print(f'font_family={font.family()}'); print(f'font_point_size={font.pointSizeF()}'); print(f'font_metrics_height={fm.height()} avg_char_width={fm.averageCharWidth()}')"
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Test full Qt geometry suite
+        run: pytest tests/test_application_window.py tests/test_main_window.py tests/test_system_check_dialog.py
+
   package-validation:
+    needs: qt-geometry-preflight
     runs-on: windows-latest
     timeout-minutes: 90
 

@@ -537,6 +537,7 @@ class SystemCheckDialog(QDialog):
         self.component_table.setColumnWidth(0, min(max(self.component_table.columnWidth(0), 100), 140))
         self.component_table.setColumnWidth(1, min(max(self.component_table.columnWidth(1), 84), 120))
         self._resize_component_columns()
+        self._update_component_table_height()
         self._arrange_action_button_grids()
         has_guided_steps = bool(_default_steps(diagnostics))
         self.setup_dependencies_button.setEnabled(has_guided_steps and not self._setup_active())
@@ -583,11 +584,13 @@ class SystemCheckDialog(QDialog):
         self._arrange_action_button_grids(force=True)
         ui_geometry.clamp_widget_to_available_screen(self)
         self._resize_component_columns()
+        self._update_component_table_height()
         self._arrange_action_button_grids(force=True)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._resize_component_columns()
+        self._update_component_table_height()
         self._arrange_action_button_grids()
 
     def _arrange_action_button_grids(self, *, force: bool = False) -> None:
@@ -672,6 +675,18 @@ class SystemCheckDialog(QDialog):
             min(self._DETAILS_COLUMN_MAX, viewport_width - first - second - 44),
         )
         self.component_table.horizontalHeader().resizeSection(2, details_width)
+
+    def _update_component_table_height(self) -> None:
+        rows = self.component_table.rowCount()
+        header_height = self.component_table.horizontalHeader().height()
+        row_default = self.component_table.verticalHeader().defaultSectionSize()
+        row_height = sum(max(self.component_table.sizeHintForRow(row), row_default) for row in range(rows))
+        if rows == 0:
+            row_height = row_default
+        frame_height = self.component_table.frameWidth() * 2
+        table_height = header_height + row_height + frame_height + 2
+        self.component_table.setMinimumHeight(table_height)
+        self.component_table.setMaximumHeight(table_height)
 
     @staticmethod
     def _wrap_unbroken_segments(text: str, *, chunk_size: int = 24) -> str:

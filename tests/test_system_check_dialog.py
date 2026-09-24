@@ -1,13 +1,19 @@
+import platform
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, QRect, Qt, QUrl
+from PySide6.QtCore import QPoint, QRect, Qt, QUrl, qVersion
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QMessageBox
 
 from source_doc_converter.system_check_dialog import (
     GHOSTSCRIPT_RELEASES_URL,
     SystemCheckDialog,
 )
-from source_doc_converter.system_diagnostics import ComponentStatus, SystemDiagnostics
+from source_doc_converter.system_diagnostics import (
+    PYSIDE_VERSION,
+    ComponentStatus,
+    SystemDiagnostics,
+)
 
 
 def sample_diagnostics() -> SystemDiagnostics:
@@ -50,6 +56,53 @@ def _scroll_into_view_and_assert_visible(dialog: SystemCheckDialog, control, qtb
     qtbot.wait(10)
     _assert_visible_in_scroll_viewport(dialog, control)
     assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
+
+
+def _dialog_geometry_diagnostics(dialog: SystemCheckDialog) -> dict[str, object]:
+    screen = dialog.screen() or QGuiApplication.primaryScreen()
+    return {
+        "window": (dialog.width(), dialog.height()),
+        "viewport": (
+            dialog.content_scroll.viewport().width(),
+            dialog.content_scroll.viewport().height(),
+        ),
+        "scroll": (
+            dialog.content_scroll.horizontalScrollBar().maximum(),
+            dialog.content_scroll.verticalScrollBar().maximum(),
+        ),
+        "content_size_hint": (
+            dialog.content_scroll.widget().sizeHint().width(),
+            dialog.content_scroll.widget().sizeHint().height(),
+        ),
+        "table": (
+            dialog.component_table.height(),
+            dialog.component_table.sizeHint().height(),
+            dialog.component_table.viewport().height(),
+        ),
+        "groups": {
+            "guidance": (
+                dialog.guidance_label.height(),
+                dialog.guidance_label.sizeHint().height(),
+            ),
+            "dependency": (
+                dialog.setup_dependencies_button.parentWidget().height(),
+                dialog.setup_dependencies_button.parentWidget().sizeHint().height(),
+            ),
+            "model": (
+                dialog.choose_model_button.parentWidget().height(),
+                dialog.choose_model_button.parentWidget().sizeHint().height(),
+            ),
+        },
+        "python_version": platform.python_version(),
+        "pyside_version": PYSIDE_VERSION,
+        "qt_version": qVersion(),
+        "qt_platform": QGuiApplication.platformName(),
+        "dpi": screen.logicalDotsPerInch() if screen is not None else None,
+        "font_metrics": (
+            dialog.fontMetrics().height(),
+            dialog.fontMetrics().averageCharWidth(),
+        ),
+    }
 
 
 def test_dialog_displays_component_status(qtbot) -> None:
@@ -338,8 +391,9 @@ def test_system_check_summary_actions_fit_large_viewport_without_outer_scroll(
     dialog.show()
     qtbot.wait(20)
 
-    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
-    assert dialog.content_scroll.verticalScrollBar().maximum() == 0
+    diagnostics = _dialog_geometry_diagnostics(dialog)
+    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0, diagnostics
+    assert dialog.content_scroll.verticalScrollBar().maximum() == 0, diagnostics
     for control in (
         dialog.activity_status_label,
         dialog.details_button,
@@ -383,8 +437,9 @@ def test_system_check_resize_large_small_large_clears_stale_overflow(monkeypatch
     dialog.resize(1400, 900)
     dialog.show()
     qtbot.wait(20)
-    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
-    assert dialog.content_scroll.verticalScrollBar().maximum() == 0
+    diagnostics = _dialog_geometry_diagnostics(dialog)
+    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0, diagnostics
+    assert dialog.content_scroll.verticalScrollBar().maximum() == 0, diagnostics
 
     dialog.resize(640, 480)
     qtbot.wait(20)
@@ -401,8 +456,9 @@ def test_system_check_resize_large_small_large_clears_stale_overflow(monkeypatch
 
     dialog.resize(1400, 900)
     qtbot.wait(20)
-    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0
-    assert dialog.content_scroll.verticalScrollBar().maximum() == 0
+    diagnostics = _dialog_geometry_diagnostics(dialog)
+    assert dialog.content_scroll.horizontalScrollBar().maximum() == 0, diagnostics
+    assert dialog.content_scroll.verticalScrollBar().maximum() == 0, diagnostics
 
     dialog.resize(640, 480)
     qtbot.wait(20)

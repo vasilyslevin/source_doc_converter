@@ -1,6 +1,9 @@
+import platform
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, QRect, QSettings, QUrl
+from PySide6 import __version__ as PYSIDE_VERSION
+from PySide6.QtCore import QPoint, QRect, QSettings, QUrl, qVersion
+from PySide6.QtGui import QGuiApplication
 
 from source_doc_converter import application_window
 from source_doc_converter import main_window as base_main_window
@@ -689,8 +692,28 @@ def test_advanced_layout_fits_large_viewport_without_outer_scrollbars(
         "queue": (window.queue.height(), window.queue.maximumHeight()),
         "output_group": (window.output_group.height(), window.output_group.sizeHint().height()),
         "actions_group": (window.actions_group.height(), window.actions_group.sizeHint().height()),
+        "output_width": window.output_group.contentsRect().width(),
+        "available_output_width": (
+            window.content_scroll.viewport().width()
+            - window._wide_left_column.minimumSizeHint().width()
+            - window._content_layout.horizontalSpacing()
+            - window._content_layout.contentsMargins().left()
+            - window._content_layout.contentsMargins().right()
+        ),
         "advanced_two_column": window._advanced_two_column,
+        "python_version": platform.python_version(),
+        "pyside_version": PYSIDE_VERSION,
+        "qt_version": qVersion(),
+        "qt_platform": QGuiApplication.platformName(),
+        "dpi": None,
+        "font_metrics": (
+            window.fontMetrics().height(),
+            window.fontMetrics().averageCharWidth(),
+        ),
     }
+    screen = window.screen() or QGuiApplication.primaryScreen()
+    if screen is not None:
+        diagnostics["dpi"] = screen.logicalDotsPerInch()
     assert window.content_scroll.horizontalScrollBar().maximum() == 0, diagnostics
     assert window.content_scroll.verticalScrollBar().maximum() == 0, diagnostics
     needed_for_two_columns = (
