@@ -2,9 +2,12 @@ import platform
 import pprint
 from pathlib import Path
 
+import pytest
 from PySide6 import __version__ as PYSIDE_VERSION
-from PySide6.QtCore import QPoint, QRect, QSettings, QUrl, qVersion
+from PySide6.QtCore import QPoint, QRect, QSettings, Qt, QUrl, qVersion
 from PySide6.QtGui import QGuiApplication
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication
 
 from source_doc_converter import application_window
 from source_doc_converter import main_window as base_main_window
@@ -68,6 +71,31 @@ def assert_reachable_with_optional_horizontal_scroll(window: ApplicationWindow, 
 
 def _full_diagnostics_message(diagnostics: dict[str, object]) -> str:
     return pprint.pformat(diagnostics, width=200, sort_dicts=True, compact=False)
+
+
+def _dispatch_wheel(widget, *, delta_y: int) -> None:
+    top_level = widget.window()
+    handle = top_level.windowHandle()
+    assert handle is not None
+    position = widget.mapTo(top_level, widget.rect().center())
+    QTest.wheelEvent(
+        handle,
+        position,
+        QPoint(0, delta_y),
+        QPoint(0, 0),
+        Qt.KeyboardModifier.NoModifier,
+        Qt.ScrollPhase.ScrollUpdate,
+    )
+    QApplication.processEvents()
+
+
+def _scrollbar_moves_from_wheel(target_widget, scrollbar) -> bool:
+    start = scrollbar.value()
+    for delta in (-120, 120, -120, 120):
+        _dispatch_wheel(target_widget, delta_y=delta)
+        if scrollbar.value() != start:
+            return True
+    return False
 
 
 def test_unavailable_components_disable_outputs(qtbot) -> None:
@@ -605,6 +633,144 @@ def test_fast_mode_ignores_table_analysis_even_if_preference_remains_checked(
 
     assert window.table_structure_checkbox.isChecked()
     assert worker._analysis_mode == "fast"
+
+
+@pytest.mark.parametrize("focused", [False, True])
+@pytest.mark.parametrize(
+    ("combo_name", "setting_key"),
+    [
+        ("ocr_mode_combo", OCR_MODE_SETTING),
+        ("ai_analysis_mode_combo", AI_ANALYSIS_MODE_SETTING),
+        ("processing_profile_combo", PROCESSING_PROFILE_SETTING),
+        ("tesseract_profile_combo", TESSERACT_PROFILE_MODE_SETTING),
+    ],
+)
+def test_closed_converter_combos_ignore_wheel_and_allow_outer_scroll(
+    focused: bool,
+    combo_name: str,
+    setting_key: str,
+    monkeypatch,
+    qtbot,
+    tmp_path: Path,
+) -> None:
+    installation = sample_installation(tmp_path, source="path")
+    monkeypatch.setattr(
+        application_window,
+        "discover_tesseract_installations",
+        lambda: (installation,),
+    )
+    settings = QSettings(str(tmp_path / f"wheel-{combo_name}-{focused}.ini"), QSettings.Format.IniFormat)
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True),
+        settings=settings,
+    )
+    qtbot.addWidget(window)
+    window.advanced_toggle_button.setChecked(True)
+    window.resize(620, 420)
+    window.show()
+    qtbot.wait(20)
+
+    combo = getattr(window, combo_name)
+    assert combo.count() >= 2
+    assert not combo.view().isVisible()
+    scroll_bar = window.content_scroll.verticalScrollBar()
+    assert scroll_bar.maximum() > 0
+    window.content_scroll.ensureWidgetVisible(combo, 0, 0)
+    QApplication.processEvents()
+    start_scroll = scroll_bar.value()
+    start_index = combo.currentIndex()
+    start_data = combo.currentData()
+    start_setting = settings.value(setting_key)
+
+    if focused:
+        combo.setFocus()
+    else:
+        window.process_button.setFocus()
+
+    assert _scrollbar_moves_from_wheel(combo, scroll_bar)
+    assert scroll_bar.value() != start_scroll
+    assert combo.currentIndex() == start_index
+    assert combo.currentData() == start_data
+    assert settings.value(setting_key) == start_setting
+
+
+def test_open_combo_popup_wheel_scrolls_popup_without_scrolling_outer_page(
+    monkeypatch,
+    qtbot,
+    tmp_path: Path,
+) -> None:
+    installation = sample_installation(tmp_path, source="path")
+    monkeypatch.setattr(
+        application_window,
+        "discover_tesseract_installations",
+        lambda: (installation,),
+    )
+    settings = QSettings(str(tmp_path / "open-combo-wheel.ini"), QSettings.Format.IniFormat)
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True),
+        settings=settings,
+    )
+    qtbot.addWidget(window)
+    window.advanced_toggle_button.setChecked(True)
+    window.resize(620, 420)
+    window.show()
+    qtbot.wait(20)
+
+    combo = window.ocr_mode_combo
+    combo.setMaxVisibleItems(3)
+    for extra in range(8):
+        combo.addItem(f"Extra mode {extra}", f"extra_{extra}")
+    combo.view().setFixedHeight(combo.fontMetrics().height() * 2)
+    scroll_bar = window.content_scroll.verticalScrollBar()
+    assert scroll_bar.maximum() > 0
+    scroll_bar.setValue(scroll_bar.maximum() // 2)
+    outer_before = scroll_bar.value()
+
+    combo.showPopup()
+    qtbot.wait(20)
+    popup_view = combo.view()
+    popup_scroll = popup_view.verticalScrollBar()
+    assert popup_view.isVisible()
+    assert popup_scroll.maximum() > 0
+
+    popup_scroll.setValue(0)
+    _dispatch_wheel(popup_view.viewport(), delta_y=-120)
+    assert popup_scroll.value() > 0
+    assert scroll_bar.value() == outer_before
+
+    target_row = combo.count() - 1
+    target_index = combo.model().index(target_row, 0)
+    popup_view.scrollTo(target_index)
+    qtbot.wait(20)
+    rect = popup_view.visualRect(target_index)
+    qtbot.mouseClick(popup_view.viewport(), Qt.MouseButton.LeftButton, pos=rect.center())
+    assert combo.currentIndex() == target_row
+    assert not popup_view.isVisible()
+    assert scroll_bar.value() == outer_before
+
+
+def test_converter_combo_keyboard_selection_still_updates_setting(qtbot, tmp_path: Path) -> None:
+    settings = QSettings(str(tmp_path / "keyboard-combo.ini"), QSettings.Format.IniFormat)
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True),
+        settings=settings,
+    )
+    qtbot.addWidget(window)
+    window.advanced_toggle_button.setChecked(True)
+    window.resize(620, 420)
+    window.show()
+    qtbot.wait(20)
+
+    combo = window.processing_profile_combo
+    start_index = combo.currentIndex()
+    combo.setFocus()
+    assert combo.hasFocus()
+
+    qtbot.keyClick(combo, Qt.Key.Key_Down)
+    qtbot.keyClick(combo, Qt.Key.Key_Return)
+
+    assert combo.currentIndex() != start_index
+    assert settings.value(PROCESSING_PROFILE_SETTING) == combo.currentData()
 
 
 def test_advanced_controls_remain_reachable_on_constrained_width(qtbot) -> None:

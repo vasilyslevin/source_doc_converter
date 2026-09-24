@@ -2,7 +2,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import QElapsedTimer, QSettings, QTimer, QUrl
-from PySide6.QtGui import QDesktopServices, QResizeEvent, QShowEvent
+from PySide6.QtGui import QDesktopServices, QResizeEvent, QShowEvent, QWheelEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -71,6 +71,14 @@ def format_elapsed(milliseconds: int) -> str:
     if hours:
         return f"{hours:d}:{minutes:02d}:{seconds:02d}"
     return f"{minutes:02d}:{seconds:02d}"
+
+
+class ScrollSafeComboBox(QComboBox):
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        if self.view().isVisible():
+            super().wheelEvent(event)
+            return
+        event.ignore()
 
 
 class ApplicationWindow(MainWindow):
@@ -184,7 +192,7 @@ class ApplicationWindow(MainWindow):
         ):
             checkbox.toggled.connect(self._save_processing_preferences)
 
-        self.ocr_mode_combo = QComboBox()
+        self.ocr_mode_combo = ScrollSafeComboBox()
         self.ocr_mode_combo.addItem("Smart legal document (recommended)", "smart")
         self.ocr_mode_combo.addItem("Skip existing text", "skip")
         self.ocr_mode_combo.addItem("Redo OCR", "redo")
@@ -205,7 +213,7 @@ class ApplicationWindow(MainWindow):
         ocr_mode_row = QVBoxLayout()
         ocr_mode_row.addWidget(QLabel("OCR mode:"))
         ocr_mode_row.addWidget(self.ocr_mode_combo)
-        self.ai_analysis_mode_combo = QComboBox()
+        self.ai_analysis_mode_combo = ScrollSafeComboBox()
         self.ai_analysis_mode_combo.addItem("Auto (recommended)", "auto")
         self.ai_analysis_mode_combo.addItem("Fast Markdown", "fast")
         self.ai_analysis_mode_combo.addItem("Accurate Markdown", "accurate")
@@ -227,7 +235,7 @@ class ApplicationWindow(MainWindow):
         ai_mode_row.addWidget(QLabel("AI analysis mode:"))
         ai_mode_row.addWidget(self.ai_analysis_mode_combo)
 
-        self.processing_profile_combo = QComboBox()
+        self.processing_profile_combo = ScrollSafeComboBox()
         self.processing_profile_combo.addItem("Maximum speed", "max_speed")
         self.processing_profile_combo.addItem("Balanced", "balanced")
         self.processing_profile_combo.addItem("Energy saver", "energy_saver")
@@ -253,7 +261,7 @@ class ApplicationWindow(MainWindow):
         tesseract_help.setWordWrap(True)
         tesseract_layout.addWidget(tesseract_help)
         tesseract_row = QVBoxLayout()
-        self.tesseract_profile_combo = QComboBox()
+        self.tesseract_profile_combo = ScrollSafeComboBox()
         self._configure_responsive_combo(self.tesseract_profile_combo, min_chars=18)
         self.tesseract_profile_combo.currentIndexChanged.connect(self._on_tesseract_profile_changed)
         self.browse_tesseract_button = QPushButton("Browse Tesseract…")
