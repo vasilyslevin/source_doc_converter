@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt, QThread, Signal
@@ -91,6 +92,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._pdf_paths: list[Path] = []
         self._output_directory: Path | None = None
+        self._output_directory_is_auto = False
         self._processing = False
         self._completed_count = 0
         self._processing_errors: list[str] = []
@@ -318,10 +320,11 @@ class MainWindow(QMainWindow):
     def choose_output_directory(self) -> None:
         path = QFileDialog.getExistingDirectory(self, "Choose an output folder")
         if path:
-            self.set_output_directory(Path(path))
+            self.set_output_directory(Path(path), automatic=False)
 
-    def set_output_directory(self, path: Path) -> None:
+    def set_output_directory(self, path: Path, *, automatic: bool = False) -> None:
         self._output_directory = path.resolve()
+        self._output_directory_is_auto = automatic
         self.output_path_edit.setText(str(self._output_directory))
         self.update_process_button()
 
@@ -330,7 +333,7 @@ class MainWindow(QMainWindow):
         for raw_path in paths:
             path = Path(raw_path)
             if path.is_dir():
-                candidates.extend(item for item in path.rglob("*") if item.is_file())
+                candidates.extend(self._iter_pdf_candidates_from_folder(path))
             else:
                 candidates.append(path)
 
@@ -347,6 +350,7 @@ class MainWindow(QMainWindow):
 
         self._update_status()
         self._refresh_queue_summary()
+        self._refresh_auto_output_directory()
         self.update_process_button()
 
     def remove_selected(self) -> None:
@@ -356,6 +360,7 @@ class MainWindow(QMainWindow):
             self._pdf_paths.pop(row)
         self._update_status()
         self._refresh_queue_summary()
+        self._refresh_auto_output_directory()
         self.update_process_button()
 
     def clear_queue(self) -> None:
@@ -363,6 +368,7 @@ class MainWindow(QMainWindow):
         self._pdf_paths.clear()
         self._update_status()
         self._refresh_queue_summary()
+        self._refresh_auto_output_directory()
         self.update_process_button()
 
     def update_process_button(self) -> None:
@@ -550,6 +556,47 @@ class MainWindow(QMainWindow):
 
     def _set_activity(self, value: str) -> None:
         self.activity_label.setText(f"Activity: {value}")
+
+    def _iter_pdf_candidates_from_folder(self, folder: Path) -> list[Path]:
+        candidates: list[Path] = []
+        for root, dirnames, filenames in os.walk(folder):
+            dirnames[:] = sorted(
+                name
+                for name in dirnames
+                if not self._is_converted_directory_name(name)
+            )
+            root_path = Path(root)
+            for filename in sorted(filenames):
+                candidates.append(root_path / filename)
+        return candidates
+
+    @staticmethod
+    def _is_converted_directory_name(name: str) -> bool:
+        if os.name == "nt":
+            return name.casefold() == "converted"
+        return name == "Converted"
+
+    def _refresh_auto_output_directory(self) -> None:
+        if self._output_directory is not None and not self._output_directory_is_auto:
+            return
+        suggested = self._suggest_output_directory()
+        if suggested is None:
+            if self._output_directory_is_auto:
+                self._output_directory = None
+                self._output_directory_is_auto = False
+                self.output_path_edit.clear()
+                self.open_output_button.setEnabled(False)
+            return
+        self.set_output_directory(suggested, automatic=True)
+
+    def _suggest_output_directory(self) -> Path | None:
+        if not self._pdf_paths:
+            return None
+        parents = {path.parent.resolve() for path in self._pdf_paths}
+        if len(parents) != 1:
+            return None
+        only_parent = next(iter(parents))
+        return only_parent / "Converted"
 
     def _create_processing_worker(
         self,

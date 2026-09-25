@@ -5,7 +5,7 @@ from threading import Event
 from PySide6.QtCore import QObject, Signal, Slot
 
 from source_doc_converter.markdown_bundle import (
-    DEFAULT_BUNDLE_FILENAME,
+    bundle_destination_for_inputs,
     create_markdown_bundle,
 )
 from source_doc_converter.ocr_pipeline import (
@@ -72,6 +72,27 @@ class ProcessingWorker(QObject):
         total = len(self._input_paths)
         markdown_outputs: list[tuple[Path, Path]] = []
         omitted_markdown_sources: list[str] = []
+        bundle_destination: Path | None = None
+        if self._create_markdown and self._create_markdown_bundle:
+            try:
+                bundle_destination = bundle_destination_for_inputs(
+                    self._input_paths,
+                    self._output_directory,
+                )
+            except OcrError as error:
+                message = str(error)
+                self.stage_changed.emit("Combined Markdown bundle failed: " + message)
+                for input_path in self._input_paths:
+                    self.file_failed.emit(str(input_path), message)
+                self.finished.emit(False, 0, total)
+                return
+            if bundle_destination.exists():
+                message = f"Output already exists and will not be overwritten: {bundle_destination}"
+                self.stage_changed.emit("Combined Markdown bundle failed: " + message)
+                for input_path in self._input_paths:
+                    self.file_failed.emit(str(input_path), message)
+                self.finished.emit(False, 0, total)
+                return
         self.stage_changed.emit(
             "Runtime: "
             + f"OCR workers={self._ocr_workers}, "
@@ -167,7 +188,8 @@ class ProcessingWorker(QObject):
             try:
                 bundle_path = create_markdown_bundle(
                     tuple(markdown_outputs),
-                    self._output_directory / DEFAULT_BUNDLE_FILENAME,
+                    bundle_destination
+                    or bundle_destination_for_inputs(self._input_paths, self._output_directory),
                     cancel_event=self._cancel_event,
                 )
             except OcrCancelledError:

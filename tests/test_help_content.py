@@ -5,14 +5,14 @@ def test_getting_started_covers_basic_workflow_and_defaults() -> None:
     body = GETTING_STARTED.body
     assert "1. Add PDFs or Add Folder" in body
     assert "2. Review the queue" in body
-    assert "3. Choose an output folder" in body
+    assert "3. Choose an output folder, or use the auto-suggested" in body
     assert "4. Select output types" in body
     assert "5. Optionally expand Advanced options" in body
     assert "6. Click Process Documents" in body
     assert "7. Review progress/activity" in body
     assert "Adding a file only queues it" in body
     assert "No processing starts automatically" in body
-    assert "Combined Markdown bundle stays off unless you explicitly enable it" in body
+    assert "auto-suggests `<source folder>/Converted`" in body
 
 
 def test_settings_guide_explains_each_visible_option_and_scope() -> None:

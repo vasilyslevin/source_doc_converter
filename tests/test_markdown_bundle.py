@@ -3,8 +3,17 @@ from threading import Event
 
 import pytest
 
-from source_doc_converter.markdown_bundle import create_markdown_bundle
-from source_doc_converter.ocr_pipeline import OcrCancelledError, OcrError, OutputCollisionError
+from source_doc_converter.markdown_bundle import (
+    bundle_destination_for_inputs,
+    bundle_filename_for_inputs,
+    create_markdown_bundle,
+)
+from source_doc_converter.ocr_pipeline import (
+    OcrCancelledError,
+    OcrError,
+    OutputCollisionError,
+    OutputPathTooLongError,
+)
 
 
 def test_bundle_preserves_queue_order_and_headings(tmp_path: Path) -> None:
@@ -26,6 +35,57 @@ def test_bundle_preserves_queue_order_and_headings(tmp_path: Path) -> None:
     assert text.index("# Source: zeta.pdf") < text.index("# Source: alpha.pdf")
     assert "# Source: zeta.pdf\n\nfirst content" in text
     assert "# Source: alpha.pdf\n\nsecond content" in text
+
+
+def test_bundle_filename_uses_queue_order_and_mixed_case_extensions() -> None:
+    inputs = (
+        Path("/tmp/332.pdf"),
+        Path("/tmp/333.PDF"),
+        Path("/tmp/1246.PdF"),
+    )
+    assert bundle_filename_for_inputs(inputs) == "332_333_1246.md"
+
+
+def test_bundle_filename_disambiguates_duplicates_and_empty_stems() -> None:
+    inputs = (
+        Path("/tmp/.pdf"),
+        Path("/tmp/?.pdf"),
+        Path("/tmp/?.PDF"),
+        Path("/tmp/con.pdf"),
+    )
+    assert bundle_filename_for_inputs(inputs) == "pdf_source_source_2_file_con.md"
+
+
+def test_bundle_filename_shortens_long_batches_with_stable_suffix() -> None:
+    inputs = tuple(Path(f"/tmp/{'x' * 30}_{index}.pdf") for index in range(15))
+    output_directory = Path("/tmp/source-doc-converter-tests")
+
+    filename = bundle_filename_for_inputs(inputs, output_directory)
+    full_path = output_directory / filename
+
+    assert filename.endswith(".md")
+    assert "_15src_" in filename
+    assert len(filename) <= 120
+    assert len(str(full_path)) <= 240
+
+
+def test_bundle_filename_raises_for_infeasible_output_path_budget(tmp_path: Path) -> None:
+    inputs = tuple(Path(f"/tmp/{'x' * 30}_{index}.pdf") for index in range(15))
+    output_directory = tmp_path / ("deep" * 60)
+    full_path_guess = output_directory / "placeholder.md"
+
+    assert len(str(full_path_guess)) > 240
+    with pytest.raises(OutputPathTooLongError, match="Choose a shorter output folder"):
+        bundle_filename_for_inputs(inputs, output_directory)
+
+
+def test_bundle_destination_is_predictable_before_processing(tmp_path: Path) -> None:
+    output_directory = tmp_path / "out"
+    destination = bundle_destination_for_inputs(
+        (tmp_path / "first.pdf", tmp_path / "second.pdf"),
+        output_directory,
+    )
+    assert destination == output_directory / "first_second.md"
 
 
 def test_bundle_escapes_markdown_specials_and_keeps_unicode(tmp_path: Path) -> None:

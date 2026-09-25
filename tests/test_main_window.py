@@ -48,9 +48,8 @@ def test_adds_only_unique_pdf_files(qtbot, tmp_path: Path) -> None:
 
     assert window.pdf_paths == (pdf.resolve(),)
     assert window.queue.count() == 1
-    assert window.output_directory is None
-    assert not window.process_button.isEnabled()
-    assert "choose an output folder" in window.next_step_label.text().lower()
+    assert window.output_directory == (tmp_path / "Converted").resolve()
+    assert window.process_button.isEnabled()
 
 
 def test_adds_pdfs_from_folder(qtbot, tmp_path: Path) -> None:
@@ -58,12 +57,16 @@ def test_adds_pdfs_from_folder(qtbot, tmp_path: Path) -> None:
     nested.mkdir()
     first = make_pdf(tmp_path / "first.pdf")
     second = make_pdf(nested / "second.PDF")
+    converted = tmp_path / "Converted"
+    converted.mkdir()
+    skipped = make_pdf(converted / "already.searchable.pdf")
 
     window = MainWindow()
     qtbot.addWidget(window)
     window.add_paths([str(tmp_path)])
 
     assert set(window.pdf_paths) == {first.resolve(), second.resolve()}
+    assert skipped.resolve() not in set(window.pdf_paths)
     assert window.queue.count() == 2
 
 
@@ -91,6 +94,55 @@ def test_clear_disables_processing(qtbot, tmp_path: Path) -> None:
 
     assert window.pdf_paths == ()
     assert not window.process_button.isEnabled()
+    assert window.output_directory is None
+
+
+def test_auto_output_clears_when_queue_mixes_source_folders(qtbot, tmp_path: Path) -> None:
+    first_parent = tmp_path / "one"
+    second_parent = tmp_path / "two"
+    first_parent.mkdir()
+    second_parent.mkdir()
+    first = make_pdf(first_parent / "first.pdf")
+    second = make_pdf(second_parent / "second.pdf")
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.add_paths([str(first)])
+    assert window.output_directory == (first.parent / "Converted").resolve()
+
+    window.add_paths([str(second)])
+    assert window.output_directory is None
+    assert not window.process_button.isEnabled()
+
+
+def test_manual_output_directory_is_preserved_across_queue_changes(qtbot, tmp_path: Path) -> None:
+    first_parent = tmp_path / "one"
+    second_parent = tmp_path / "two"
+    first_parent.mkdir()
+    second_parent.mkdir()
+    first = make_pdf(first_parent / "first.pdf")
+    second = make_pdf(second_parent / "second.pdf")
+    manual_output = tmp_path / "manual-out"
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.add_paths([str(first)])
+    window.set_output_directory(manual_output)
+    window.add_paths([str(second)])
+
+    assert window.output_directory == manual_output.resolve()
+
+
+def test_explicit_file_selection_from_converted_folder_is_allowed(qtbot, tmp_path: Path) -> None:
+    converted = tmp_path / "Converted"
+    converted.mkdir()
+    selected = make_pdf(converted / "manual.pdf")
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.add_paths([str(selected)])
+
+    assert window.pdf_paths == (selected.resolve(),)
 
 
 def test_queue_remains_scrollable_while_processing(qtbot, tmp_path: Path) -> None:
